@@ -243,9 +243,12 @@ function loadDisputesData() {
 // Function to analyze revenue and sales trends over the past year
 function revenueAndSalesTrends() {
     var lastYear = (0, date_fns_1.subYears)(new Date(), 1);
-    var recentPayments = payments_df.data.filter(function (payment) { return payment.payment_date >= lastYear; });
+    var sortedPayments = payments_df.data.sort(function (a, b) {
+        return a.payment_date.getTime() - b.payment_date.getTime();
+    });
+    var recentPayments = sortedPayments.filter(function (payment) { return payment.payment_date >= lastYear; });
     var revenueTrends = recentPayments.reduce(function (acc, payment) {
-        var paymentDate = (0, date_fns_1.format)(payment.payment_date, 'yyyy-MM-dd');
+        var paymentDate = (0, date_fns_1.format)(payment.payment_date, 'yyyy-MM');
         if (!acc[paymentDate]) {
             acc[paymentDate] = { total_revenue: 0, total_transactions: 0 };
         }
@@ -253,8 +256,8 @@ function revenueAndSalesTrends() {
         acc[paymentDate].total_transactions += 1;
         return acc;
     }, {});
-    // console.log("\nRevenue and Sales Trends Over the Past Year:");
-    // console.log(revenueTrends);
+    console.log("\nRevenue and Sales Trends Over the Past Year:");
+    console.log(revenueTrends);
     return {
         revenue_trends: revenueTrends
     };
@@ -262,20 +265,24 @@ function revenueAndSalesTrends() {
 // Function to analyze customer growth and retention rates
 function customerGrowthAndRetention() {
     var oneYearAgo = (0, date_fns_1.subYears)(new Date(), 1);
-    var customerGrowth = customers_df.data.reduce(function (acc, customer) {
-        var addedOnDate = (0, date_fns_1.format)(customer.added_on, 'yyyy-MM-dd');
-        if (!acc[addedOnDate]) {
-            acc[addedOnDate] = 0;
+    var sixMonthsAgo = (0, date_fns_1.subDays)(new Date(), 180);
+    var sortedCustomers = customers_df.data.sort(function (a, b) {
+        return a.added_on.getTime() - b.added_on.getTime();
+    });
+    var customerGrowth = sortedCustomers.reduce(function (acc, customer) {
+        var addedOnMonth = (0, date_fns_1.format)(customer.added_on, 'yyyy-MM');
+        if (!acc[addedOnMonth]) {
+            acc[addedOnMonth] = 0;
         }
-        acc[addedOnDate]++;
+        acc[addedOnMonth]++;
         return acc;
     }, {});
     var startCustomers = customers_df.data.filter(function (customer) { return customer.added_on <= oneYearAgo; }).length;
     var newCustomers = customers_df.data.filter(function (customer) { return customer.added_on >= oneYearAgo; }).length;
-    var endCustomers = customers_df.data.filter(function (customer) { return customer.last_transaction >= oneYearAgo; }).length;
+    var endCustomers = customers_df.data.filter(function (customer) { return customer.last_transaction >= sixMonthsAgo; }).length;
     var retentionRate = startCustomers > 0 ? ((endCustomers - newCustomers) / startCustomers) * 100 : 0;
-    // console.log("\nCustomer Growth (New Customers per Month):");
-    // console.log(customerGrowth);
+    console.log("\nCustomer Growth (New Customers per Month):");
+    console.log(customerGrowth);
     console.log("\nCustomer Retention Rate: ".concat(retentionRate.toFixed(2), "%"));
     return {
         customers_gained_each_month: customerGrowth,
@@ -310,11 +317,14 @@ function disputeAnalysis() {
 }
 // Function to analyze subscription performance
 function subscriptionPerformance() {
-    var subscriptionItems = payments_df.data.filter(function (payment) { return payment.item.includes("subscription"); });
+    var sortedPayments = payments_df.data.sort(function (a, b) {
+        return a.payment_date.getTime() - b.payment_date.getTime();
+    });
+    var subscriptionItems = sortedPayments.filter(function (payment) { return payment.item.includes("subscription"); });
     var totalSubscriptions = subscriptionItems.length;
     var uniqueSubscribers = new Set(subscriptionItems.map(function (payment) { return payment.customer_email; })).size;
     var subscriptionHistory = subscriptionItems.reduce(function (acc, payment) {
-        var paymentDate = (0, date_fns_1.format)(payment.payment_date, 'yyyy-MM-dd');
+        var paymentDate = (0, date_fns_1.format)(payment.payment_date, 'yyyy-MM');
         if (!acc[paymentDate]) {
             acc[paymentDate] = { total_subscriptions: 0, total_revenue: 0 };
         }
@@ -415,7 +425,6 @@ function performanceComparison() {
     var currentDate = new Date();
     var currentYear = currentDate.getFullYear();
     var currentMonth = currentDate.getMonth();
-    // Determine last month and year
     var lastMonth = currentMonth === 0 ? 11 : currentMonth - 1; // December if current is January
     var lastYear = currentMonth === 0 ? currentYear - 1 : currentYear; // Previous year if current is January
     var currentMonthSales = payments_df.data
@@ -491,7 +500,7 @@ function plotCustomerGrowth(customerGrowth) {
                             added_on: added_on,
                             new_customers: new_customers,
                         });
-                    }).slice(0, 100);
+                    });
                     chart = new QuickChart();
                     chart.setConfig({
                         type: 'bar',
@@ -531,7 +540,7 @@ function plotRevenueAndSales(revenueTrends) {
                             total_revenue: total_revenue,
                             total_transactions: total_transactions,
                         });
-                    }).slice(0, 100);
+                    });
                     chart = new QuickChart();
                     chart.setConfig({
                         type: 'line',
@@ -579,7 +588,7 @@ function plotSubscriptionPerformance(subscriptionHistory) {
                             payment_date: payment_date,
                             total_subscriptions: total_subscriptions,
                         });
-                    }).slice(0, 100);
+                    });
                     chart = new QuickChart();
                     chart.setConfig({
                         type: 'bar',
@@ -888,24 +897,27 @@ function loadData() {
         .then(function () { return __awaiter(_this, void 0, void 0, function () {
         var sr, cgr, da, sp, pp, psp, satm, rst, csg, pc;
         return __generator(this, function (_a) {
-            sr = calculateSuccessRate();
-            cgr = customerGrowthAndRetention();
-            da = disputeAnalysis();
-            sp = subscriptionPerformance();
-            pp = productPerformance();
-            psp = peakShoppingTimes();
-            satm = salesAnalysisThisMonth();
-            rst = revenueAndSalesTrends();
-            csg = customerSegmentation();
-            pc = performanceComparison();
-            // await plotCustomerGrowth(cgr.customers_gained_each_month);
-            // await plotRevenueAndSales(rst.revenue_trends);
-            // await plotSubscriptionPerformance(sp.subscription_history);
-            // await plotProductPerformance(pp.product_sales_history);
-            // await plotPeakShoppingTimes(psp.peak_shopping_times);
-            // await plotTopProducts(satm.top_products_this_month);
-            createPdfReport(sr, da, satm);
-            return [2 /*return*/];
+            switch (_a.label) {
+                case 0:
+                    sr = calculateSuccessRate();
+                    cgr = customerGrowthAndRetention();
+                    da = disputeAnalysis();
+                    sp = subscriptionPerformance();
+                    pp = productPerformance();
+                    psp = peakShoppingTimes();
+                    satm = salesAnalysisThisMonth();
+                    rst = revenueAndSalesTrends();
+                    csg = customerSegmentation();
+                    pc = performanceComparison();
+                    // await plotCustomerGrowth(cgr.customers_gained_each_month);
+                    // await plotRevenueAndSales(rst.revenue_trends);
+                    return [4 /*yield*/, plotSubscriptionPerformance(sp.subscription_history)];
+                case 1:
+                    // await plotCustomerGrowth(cgr.customers_gained_each_month);
+                    // await plotRevenueAndSales(rst.revenue_trends);
+                    _a.sent();
+                    return [2 /*return*/];
+            }
         });
     }); })
         .catch(function (error) {

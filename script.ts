@@ -5,7 +5,7 @@ const QuickChart = require('quickchart-js');
 import { faker } from '@faker-js/faker';
 import { createReadStream, writeFile } from 'fs';
 import { PDFDocument, rgb } from 'pdf-lib'; // Replace pdfkit with pdf-lib
-import { format, parseISO, subYears, isBefore, subMonths, getMonth } from 'date-fns'; // Replace moment with date-fns
+import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } from 'date-fns'; // Replace moment with date-fns
 import * as fs from 'fs';
 import { writeFileSync } from 'fs';
 import { title } from 'process';
@@ -141,9 +141,9 @@ const customersCsv = customers.map(customer => `${customer.name},${customer.emai
 const disputesCsv = disputes.map(dispute => `${dispute.customer_email},${dispute.date_created.toISOString()},${dispute.date_resolved ? dispute.date_resolved.toISOString() : ''},${dispute.status}`).join('\n');
 
 // Save to CSV files
-fs.writeFileSync('fake_customers_data.csv', customersCsv);
-fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
-fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
+// fs.writeFileSync('fake_customers_data.csv', customersCsv);
+// fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
+// fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
 
 console.log("Customers:");
 console.log(customers.slice(0, 5));
@@ -259,10 +259,14 @@ function loadDisputesData(): Promise<void> {
 // Function to analyze revenue and sales trends over the past year
 function revenueAndSalesTrends() {
     const lastYear = subYears(new Date(), 1);
-    const recentPayments = payments_df.data.filter(payment => payment.payment_date >= lastYear);
+
+    const sortedPayments = payments_df.data.sort((a, b) => 
+        a.payment_date.getTime() - b.payment_date.getTime()
+    );
+    const recentPayments = sortedPayments.filter(payment => payment.payment_date >= lastYear);
 
     const revenueTrends = recentPayments.reduce((acc, payment) => {
-        const paymentDate = format(payment.payment_date, 'yyyy-MM-dd');
+        const paymentDate = format(payment.payment_date, 'yyyy-MM');
         if (!acc[paymentDate]) {
             acc[paymentDate] = { total_revenue: 0, total_transactions: 0 };
         }
@@ -271,8 +275,8 @@ function revenueAndSalesTrends() {
         return acc;
     }, {});
 
-    // console.log("\nRevenue and Sales Trends Over the Past Year:");
-    // console.log(revenueTrends);
+    console.log("\nRevenue and Sales Trends Over the Past Year:");
+    console.log(revenueTrends);
 
     return {
         revenue_trends: revenueTrends
@@ -282,23 +286,28 @@ function revenueAndSalesTrends() {
 // Function to analyze customer growth and retention rates
 function customerGrowthAndRetention() {
     const oneYearAgo = subYears(new Date(), 1);
-    const customerGrowth = customers_df.data.reduce((acc, customer) => {
-        const addedOnDate = format(customer.added_on, 'yyyy-MM-dd');
-        if (!acc[addedOnDate]) {
-            acc[addedOnDate] = 0;
+    const sixMonthsAgo = subDays(new Date(), 180);
+    const sortedCustomers = customers_df.data.sort((a, b) => 
+        a.added_on.getTime() - b.added_on.getTime()
+    );
+    const customerGrowth = sortedCustomers.reduce((acc, customer) => {
+        const addedOnMonth = format(customer.added_on, 'yyyy-MM');
+        if (!acc[addedOnMonth]) {
+            acc[addedOnMonth] = 0;
         }
-        acc[addedOnDate]++;
+        acc[addedOnMonth]++;
         return acc;
     }, {});
 
+    
     const startCustomers = customers_df.data.filter(customer => customer.added_on <= oneYearAgo).length;
     const newCustomers = customers_df.data.filter(customer => customer.added_on >= oneYearAgo).length;
-    const endCustomers = customers_df.data.filter(customer => customer.last_transaction >= oneYearAgo).length;
+    const endCustomers = customers_df.data.filter(customer => customer.last_transaction >= sixMonthsAgo).length;
 
     const retentionRate = startCustomers > 0 ? ((endCustomers - newCustomers) / startCustomers) * 100 : 0;
 
-    // console.log("\nCustomer Growth (New Customers per Month):");
-    // console.log(customerGrowth);
+    console.log("\nCustomer Growth (New Customers per Month):");
+    console.log(customerGrowth);
     console.log(`\nCustomer Retention Rate: ${retentionRate.toFixed(2)}%`);
 
     return {
@@ -306,6 +315,7 @@ function customerGrowthAndRetention() {
         retention_rate_over_last_year: retentionRate,
     };
 }
+
 
 // Function to analyze disputes
 function disputeAnalysis() {
@@ -339,13 +349,18 @@ function disputeAnalysis() {
 
 // Function to analyze subscription performance
 function subscriptionPerformance() {
-    const subscriptionItems = payments_df.data.filter(payment => payment.item.includes("subscription"));
+
+    const sortedPayments = payments_df.data.sort((a, b) => 
+        a.payment_date.getTime() - b.payment_date.getTime()
+    );
+    const subscriptionItems = sortedPayments.filter(payment => payment.item.includes("subscription"));
 
     const totalSubscriptions = subscriptionItems.length;
     const uniqueSubscribers = new Set(subscriptionItems.map(payment => payment.customer_email)).size;
 
     const subscriptionHistory = subscriptionItems.reduce((acc, payment) => {
-        const paymentDate = format(payment.payment_date, 'yyyy-MM-dd');
+        
+        const paymentDate = format(payment.payment_date, 'yyyy-MM');
         if (!acc[paymentDate]) {
             acc[paymentDate] = { total_subscriptions: 0, total_revenue: 0 };
         }
@@ -542,7 +557,7 @@ async function plotCustomerGrowth(customerGrowth: Record<string, number>) {
     const customerGrowthArray = Object.entries(customerGrowth).map(([added_on, new_customers]) => ({
         added_on,
         new_customers,
-    })).slice(0, 100);
+    }));
 
     const chart = new QuickChart();
     chart.setConfig({
@@ -573,7 +588,7 @@ async function plotRevenueAndSales(revenueTrends: Record<string, { total_revenue
         payment_date,
         total_revenue,
         total_transactions,
-    })).slice(0, 100);
+    }));
 
     const chart = new QuickChart();
     chart.setConfig({
@@ -612,7 +627,7 @@ async function plotSubscriptionPerformance(subscriptionHistory: Record<string, {
     const subscriptionArray = Object.entries(subscriptionHistory).map(([payment_date, { total_subscriptions }]) => ({
         payment_date,
         total_subscriptions,
-    })).slice(0, 100);
+    }));
 
     const chart = new QuickChart();
     chart.setConfig({
@@ -891,13 +906,13 @@ function loadData() {
             const rst = revenueAndSalesTrends()
             const csg = customerSegmentation()
             const pc = performanceComparison()
-            await plotCustomerGrowth(cgr.customers_gained_each_month);
-            await plotRevenueAndSales(rst.revenue_trends);
+            // await plotCustomerGrowth(cgr.customers_gained_each_month);
+            // await plotRevenueAndSales(rst.revenue_trends);
             await plotSubscriptionPerformance(sp.subscription_history);
-            await plotProductPerformance(pp.product_sales_history);
-            await plotPeakShoppingTimes(psp.peak_shopping_times);
-            await plotTopProducts(satm.top_products_this_month);
-            createPdfReport(sr, da, satm);
+            // await plotProductPerformance(pp.product_sales_history);
+            // await plotPeakShoppingTimes(psp.peak_shopping_times);
+            // await plotTopProducts(satm.top_products_this_month);
+            // createPdfReport(sr, da, satm);
         })
         .catch((error) => {
             console.error("Error loading data:", error);
