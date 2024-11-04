@@ -141,9 +141,9 @@ const customersCsv = customers.map(customer => `${customer.name},${customer.emai
 const disputesCsv = disputes.map(dispute => `${dispute.customer_email},${dispute.date_created.toISOString()},${dispute.date_resolved ? dispute.date_resolved.toISOString() : ''},${dispute.status}`).join('\n');
 
 // Save to CSV files
-// fs.writeFileSync('fake_customers_data.csv', customersCsv);
-// fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
-// fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
+fs.writeFileSync('fake_customers_data.csv', customersCsv);
+fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
+fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
 
 console.log("Customers:");
 console.log(customers.slice(0, 5));
@@ -906,13 +906,13 @@ function loadData() {
             const rst = revenueAndSalesTrends()
             const csg = customerSegmentation()
             const pc = performanceComparison()
-            // await plotCustomerGrowth(cgr.customers_gained_each_month);
-            // await plotRevenueAndSales(rst.revenue_trends);
+            await plotCustomerGrowth(cgr.customers_gained_each_month);
+            await plotRevenueAndSales(rst.revenue_trends);
             await plotSubscriptionPerformance(sp.subscription_history);
-            // await plotProductPerformance(pp.product_sales_history);
-            // await plotPeakShoppingTimes(psp.peak_shopping_times);
-            // await plotTopProducts(satm.top_products_this_month);
-            // createPdfReport(sr, da, satm);
+            await plotProductPerformance(pp.product_sales_history);
+            await plotPeakShoppingTimes(psp.peak_shopping_times);
+            await plotTopProducts(satm.top_products_this_month);
+            createPdfReport(sr, da, satm);
         })
         .catch((error) => {
             console.error("Error loading data:", error);
