@@ -1,14 +1,16 @@
 const csvParser = require('csv-parser');
 const path = require('path');
 const QuickChart = require('quickchart-js');
+const Handlebars = require('handlebars');
+const pdf = require('html-pdf-node');
+
 
 import { faker } from '@faker-js/faker';
 import { createReadStream, writeFile } from 'fs';
-import { PDFDocument, rgb } from 'pdf-lib'; // Replace pdfkit with pdf-lib
-import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } from 'date-fns'; // Replace moment with date-fns
+import { PDFDocument, rgb } from 'pdf-lib';
+import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } from 'date-fns';
 import * as fs from 'fs';
 import { writeFileSync } from 'fs';
-import { title } from 'process';
 
 
 
@@ -260,7 +262,7 @@ function loadDisputesData(): Promise<void> {
 function revenueAndSalesTrends() {
     const lastYear = subYears(new Date(), 1);
 
-    const sortedPayments = payments_df.data.sort((a, b) => 
+    const sortedPayments = payments_df.data.sort((a, b) =>
         a.payment_date.getTime() - b.payment_date.getTime()
     );
     const recentPayments = sortedPayments.filter(payment => payment.payment_date >= lastYear);
@@ -287,7 +289,7 @@ function revenueAndSalesTrends() {
 function customerGrowthAndRetention() {
     const oneYearAgo = subYears(new Date(), 1);
     const sixMonthsAgo = subDays(new Date(), 180);
-    const sortedCustomers = customers_df.data.sort((a, b) => 
+    const sortedCustomers = customers_df.data.sort((a, b) =>
         a.added_on.getTime() - b.added_on.getTime()
     );
     const customerGrowth = sortedCustomers.reduce((acc, customer) => {
@@ -299,7 +301,7 @@ function customerGrowthAndRetention() {
         return acc;
     }, {});
 
-    
+
     const startCustomers = customers_df.data.filter(customer => customer.added_on <= oneYearAgo).length;
     const newCustomers = customers_df.data.filter(customer => customer.added_on >= oneYearAgo).length;
     const endCustomers = customers_df.data.filter(customer => customer.last_transaction >= sixMonthsAgo).length;
@@ -322,17 +324,25 @@ function disputeAnalysis() {
     const disputesOpen = disputes_df.data.filter(dispute => dispute.status === "Open").length;
     const disputesResolvedLastMonth = disputes_df.data.filter(dispute =>
         dispute.status === "Resolved" &&
-        dispute.date_created >= subMonths(new Date(), 1)).length;
+        dispute.date_created >= subMonths(new Date(), 1)
+    ).length;
 
     const resolvedDisputes = disputes_df.data.filter(dispute => dispute.status === "Resolved");
 
     let meanTimeToResolution = 0;
     if (resolvedDisputes.length > 0) {
         const totalDays = resolvedDisputes.reduce((acc, dispute) => {
-            const createdDate = parseISO(dispute.date_created.toDateString());
-            const resolvedDate = parseISO(dispute.date_resolved!.toDateString()); // Use non-null assertion
-            return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
+            const createdDate = new Date(dispute.date_created);
+            const resolvedDate = new Date(dispute.date_resolved);
+
+            
+            if (!isNaN(createdDate.getTime()) && !isNaN(resolvedDate.getTime())) {
+                return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
+            } else {
+                return acc; 
+            }
         }, 0);
+        
         meanTimeToResolution = totalDays / resolvedDisputes.length;
     }
 
@@ -347,10 +357,11 @@ function disputeAnalysis() {
     };
 }
 
+
 // Function to analyze subscription performance
 function subscriptionPerformance() {
 
-    const sortedPayments = payments_df.data.sort((a, b) => 
+    const sortedPayments = payments_df.data.sort((a, b) =>
         a.payment_date.getTime() - b.payment_date.getTime()
     );
     const subscriptionItems = sortedPayments.filter(payment => payment.item.includes("subscription"));
@@ -359,7 +370,7 @@ function subscriptionPerformance() {
     const uniqueSubscribers = new Set(subscriptionItems.map(payment => payment.customer_email)).size;
 
     const subscriptionHistory = subscriptionItems.reduce((acc, payment) => {
-        
+
         const paymentDate = format(payment.payment_date, 'yyyy-MM');
         if (!acc[paymentDate]) {
             acc[paymentDate] = { total_subscriptions: 0, total_revenue: 0 };
@@ -427,19 +438,19 @@ function peakShoppingTimes() {
 function salesAnalysisThisMonth() {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth(); 
+    const currentMonth = currentDate.getMonth();
 
     const monthlySales = payments_df.data.filter(payment => {
-        const paymentDate = new Date(payment.payment_date); 
+        const paymentDate = new Date(payment.payment_date);
         return paymentDate.getFullYear() === currentYear && paymentDate.getMonth() === currentMonth;
     });
-   
+
     const productRevenue = monthlySales.reduce((acc, payment) => {
         acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
         return acc;
     }, {} as Record<string, number>);
 
-  
+
     const topProducts = Object.entries(productRevenue)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
@@ -484,12 +495,12 @@ function customerSegmentation() {
 function performanceComparison() {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth(); 
+    const currentMonth = currentDate.getMonth();
 
     const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1; // December if current is January
     const lastYear = currentMonth === 0 ? currentYear - 1 : currentYear; // Previous year if current is January
 
- 
+
     const currentMonthSales = payments_df.data
         .filter(payment => {
             const paymentDate = new Date(payment.payment_date);
@@ -497,7 +508,7 @@ function performanceComparison() {
         })
         .reduce((sum, payment) => sum + payment.amount, 0);
 
-  
+
     const lastMonthSales = payments_df.data
         .filter(payment => {
             const paymentDate = new Date(payment.payment_date);
@@ -583,7 +594,7 @@ async function plotCustomerGrowth(customerGrowth: Record<string, number>) {
 
 
 async function plotRevenueAndSales(revenueTrends: Record<string, { total_revenue: number; total_transactions: number; }>) {
-   
+
     const revenueTrendsArray = Object.entries(revenueTrends).map(([payment_date, { total_revenue, total_transactions }]) => ({
         payment_date,
         total_revenue,
@@ -617,7 +628,7 @@ async function plotRevenueAndSales(revenueTrends: Record<string, { total_revenue
             scales: { y: { beginAtZero: true } },
         }
     });
-    
+
     await saveChartImage(chart, 'revenue_and_sales_trends.png');
 }
 
@@ -647,13 +658,13 @@ async function plotSubscriptionPerformance(subscriptionHistory: Record<string, {
             scales: { y: { beginAtZero: true } },
         }
     });
-    
+
     await saveChartImage(chart, 'subscription_performance.png');
 }
 
 
 async function plotProductPerformance(productSalesHistory: Record<string, { total_sales: number; total_transactions: number; average_sale_value: number; }>) {
-    
+
     const productSalesArray = Object.entries(productSalesHistory).map(([item, { total_sales, total_transactions, average_sale_value }]) => ({
         item,
         total_sales,
@@ -682,7 +693,7 @@ async function plotProductPerformance(productSalesHistory: Record<string, { tota
             scales: { y: { beginAtZero: true } },
         }
     });
-    
+
     await saveChartImage(chart, 'product_performance.png');
 }
 
@@ -717,7 +728,7 @@ async function plotPeakShoppingTimes(peakTimes: Record<number, number>) {
     const chart = new QuickChart();
     chart.setConfig({
         type: 'bar',
-        
+
         data: {
             labels: hours.map(hour => hour.toString()),
             datasets: [{
@@ -729,10 +740,10 @@ async function plotPeakShoppingTimes(peakTimes: Record<number, number>) {
         options: {
             plugins: {
                 title: {
-                  display: true,
-                  text: 'Peak Shopping Times'
+                    display: true,
+                    text: 'Peak Shopping Times'
                 }
-              },
+            },
             scales: { y: { beginAtZero: true } },
         }
     });
@@ -741,151 +752,36 @@ async function plotPeakShoppingTimes(peakTimes: Record<number, number>) {
 
 
 async function createPdfReport(sr: any, da: any, satm: any) {
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([612, 792]); // letter size: 8.5 x 11 inches
+    const templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
+    const template = Handlebars.compile(templateHtml);
 
-    // Define colors
-    const navy = rgb(0, 31 / 255, 63 / 255);
-    const lightcyan = rgb(224 / 255, 255 / 255, 255 / 255);
-    const blue = rgb(0, 123 / 255, 255 / 255);
-    const black = rgb(0, 0, 0);
+    const ptImgData = fs.readFileSync('./peak_shopping_times.png').toString('base64');
+    const peekTimesImgSrc = `data:image/png;base64,${ptImgData}`;
 
-    // Title
-    page.drawText('Your Month with Paystack', {
-        x: 72, // 1 inch from the left
-        y: 720, // 10 inches from the bottom
-        size: 24,
-        color: navy,
-        font: await pdfDoc.embedFont('Helvetica-Bold'),
-    });
+    const rsImgData = fs.readFileSync('./revenue_and_sales_trends.png').toString('base64');
+    const rsImgSrc = `data:image/png;base64,${rsImgData}`;
 
-    // Revenue Section
-    page.drawText('Revenue Insights', {
-        x: 72,
-        y: 680,
-        size: 16,
-        color: black,
-        font: await pdfDoc.embedFont('Helvetica-Bold'),
-    });
+    const templateData = {
+        total_payments: sr.total_payments.toLocaleString(),
+        total_volume: sr.total_volume || 'X',
+        successful_payments: sr.successful_payments.toLocaleString(),
+        success_rate: sr.success_rate.toFixed(2),
+        peak_times_image: peekTimesImgSrc,
+        revenue_sales_trend: rsImgSrc,
+        open_disputes: da.open_disputes,
+        resolved_last_month: da.resolved_last_month,
+        mean_time_to_resolution: da.mean_time_to_resolution,
+        best_product: satm.top_products_this_month[0][0],
+        best_product_revenue: satm.top_products_this_month[0][1].toLocaleString(),
+    };
 
-    page.drawText(`Processed ${sr['total_payments']} transactions with a total volume of X!`, {
-        x: 72,
-        y: 660,
-        size: 12,
-        color: blue,
-    });
-
-    page.drawText('Successful transactions:', {
-        x: 72,
-        y: 640,
-        size: 12,
-        color: black,
-    });
-
-    page.drawText(`${sr['successful_payments']}`, {
-        x: 272,
-        y: 640,
-        size: 12,
-        color: blue,
-    });
-
-    page.drawText('Success Rate:', {
-        x: 72,
-        y: 620,
-        size: 12,
-        color: black,
-    });
-
-    page.drawText(`${sr['success_rate'].toFixed(2)}%`, {
-        x: 272,
-        y: 620,
-        size: 12,
-        color: blue,
-    });
-
-    // Insert Revenue Trend Plot
-    // const revenueImage = await pdfDoc.embedPng(fs.readFileSync(path.join(__dirname, 'revenue_and_sales_trends.png')));
-    // page.drawImage(revenueImage, {
-    //     x: 72,
-    //     y: 480,
-    //     width: 360, // 5 inches
-    //     height: 180, // 3 inches
-    // });
-
-    // Insert Peak Times Plot
-    const peakTimesImage = await pdfDoc.embedPng(fs.readFileSync(path.join(__dirname, 'peak_shopping_times.png')));
-    page.drawImage(peakTimesImage, {
-        x: 72,
-        y: 300,
-        width: 360,
-        height: 180,
-    });
-
-    // Dispute Section
-    page.drawText('Dispute Insights', {
-        x: 72,
-        y: 260,
-        size: 16,
-        color: black,
-        font: await pdfDoc.embedFont('Helvetica-Bold'),
-    });
-
-    page.drawText(`You had a total of ${da['open_disputes']} open disputes.`, {
-        x: 72,
-        y: 240,
-        size: 12,
-        color: blue,
-    });
-    if (da['resolved_last_month'] > 0) {
-        const textXPosition = 72 + (2 * 72) + (`You had a total of`.length * 6 / 100 * 72);
-        page.drawText(`${da['resolved_last_month']} were settled in less than ${da['mean_time_to_resolution']} days.`, {
-            x: textXPosition,
-            y: 240,
-            size: 12,
-            color: black,
-        });
-    }
-
-    // Best Performing Products Section
-    const bestProduct = satm['top_products_this_month'][0][0];
-    const bestProductRevenue = satm['top_products_this_month'][0][1];
-    page.drawText('Best Performing Products', {
-        x: 72,
-        y: 200,
-        size: 16,
-        color: black,
-        font: await pdfDoc.embedFont('Helvetica-Bold'),
-    });
-
-    page.drawText('Most popular product:', {
-        x: 72,
-        y: 180,
-        size: 12,
-        color: black,
-    });
-
-    const productTextXPosition = 72 + (2 * 72) + ('Most popular product:'.length * 6 / 100 * 72);
-    page.drawText(`${bestProduct} with revenue of $${bestProductRevenue.toFixed(2).toLocaleString()}.`, {
-        x: productTextXPosition,
-        y: 180,
-        size: 12,
-        color: blue,
-    });
-
-    // Quick Insights Section
-    page.drawText('Quick Insights', {
-        x: 72,
-        y: 160,
-        size: 16,
-        color: black,
-        font: await pdfDoc.embedFont('Helvetica-Bold'),
-    });
-
-    // Save the PDF
-    const pdfBytes = await pdfDoc.save();
-    fs.writeFileSync('business_report.pdf', pdfBytes);
+    const htmlContent = template(templateData);
+    const options = { format: 'A4' };
+    const file = { content: htmlContent };
+    const pdfBuffer = await pdf.generatePdf(file, options);
+    fs.writeFileSync('business_report.pdf', pdfBuffer);
+    console.log("PDF report generated successfully.");
 }
-
 
 
 
@@ -906,12 +802,12 @@ function loadData() {
             const rst = revenueAndSalesTrends()
             const csg = customerSegmentation()
             const pc = performanceComparison()
-            await plotCustomerGrowth(cgr.customers_gained_each_month);
-            await plotRevenueAndSales(rst.revenue_trends);
-            await plotSubscriptionPerformance(sp.subscription_history);
-            await plotProductPerformance(pp.product_sales_history);
-            await plotPeakShoppingTimes(psp.peak_shopping_times);
-            await plotTopProducts(satm.top_products_this_month);
+            // await plotCustomerGrowth(cgr.customers_gained_each_month);
+            // await plotRevenueAndSales(rst.revenue_trends);
+            // await plotSubscriptionPerformance(sp.subscription_history);
+            // await plotProductPerformance(pp.product_sales_history);
+            // await plotPeakShoppingTimes(psp.peak_shopping_times);
+            // await plotTopProducts(satm.top_products_this_month);
             createPdfReport(sr, da, satm);
         })
         .catch((error) => {

@@ -39,10 +39,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var csvParser = require('csv-parser');
 var path = require('path');
 var QuickChart = require('quickchart-js');
+var Handlebars = require('handlebars');
+var pdf = require('html-pdf-node');
 var faker_1 = require("@faker-js/faker");
 var fs_1 = require("fs");
-var pdf_lib_1 = require("pdf-lib"); // Replace pdfkit with pdf-lib
-var date_fns_1 = require("date-fns"); // Replace moment with date-fns
+var date_fns_1 = require("date-fns");
 var fs = require("fs");
 var fs_2 = require("fs");
 // Constants
@@ -138,9 +139,9 @@ var paymentsCsv = payments.map(function (payment) { return "".concat(payment.cus
 var customersCsv = customers.map(function (customer) { return "".concat(customer.name, ",").concat(customer.email, ",").concat(customer.phone, ",").concat(customer.added_on.toISOString(), ",").concat(customer.last_transaction ? customer.last_transaction.toISOString() : '', ",").concat(customer.active); }).join('\n');
 var disputesCsv = disputes.map(function (dispute) { return "".concat(dispute.customer_email, ",").concat(dispute.date_created.toISOString(), ",").concat(dispute.date_resolved ? dispute.date_resolved.toISOString() : '', ",").concat(dispute.status); }).join('\n');
 // Save to CSV files
-// fs.writeFileSync('fake_customers_data.csv', customersCsv);
-// fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
-// fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
+fs.writeFileSync('fake_customers_data.csv', customersCsv);
+fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
+fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
 console.log("Customers:");
 console.log(customers.slice(0, 5));
 console.log("\nPayments:");
@@ -300,9 +301,14 @@ function disputeAnalysis() {
     var meanTimeToResolution = 0;
     if (resolvedDisputes.length > 0) {
         var totalDays = resolvedDisputes.reduce(function (acc, dispute) {
-            var createdDate = (0, date_fns_1.parseISO)(dispute.date_created.toDateString());
-            var resolvedDate = (0, date_fns_1.parseISO)(dispute.date_resolved.toDateString()); // Use non-null assertion
-            return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
+            var createdDate = new Date(dispute.date_created);
+            var resolvedDate = new Date(dispute.date_resolved);
+            if (!isNaN(createdDate.getTime()) && !isNaN(resolvedDate.getTime())) {
+                return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
+            }
+            else {
+                return acc;
+            }
         }, 0);
         meanTimeToResolution = totalDays / resolvedDisputes.length;
     }
@@ -729,159 +735,37 @@ function plotPeakShoppingTimes(peakTimes) {
 }
 function createPdfReport(sr, da, satm) {
     return __awaiter(this, void 0, void 0, function () {
-        var pdfDoc, page, navy, lightcyan, blue, black, _a, _b, _c, _d, _e, _f, peakTimesImage, _g, _h, _j, textXPosition, bestProduct, bestProductRevenue, _k, _l, _m, productTextXPosition, _o, _p, _q, pdfBytes;
-        var _r, _s, _t, _u, _v;
-        return __generator(this, function (_w) {
-            switch (_w.label) {
-                case 0: return [4 /*yield*/, pdf_lib_1.PDFDocument.create()];
+        var templateHtml, template, ptImgData, peekTimesImgSrc, rsImgData, rsImgSrc, templateData, htmlContent, options, file, pdfBuffer;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
+                    template = Handlebars.compile(templateHtml);
+                    ptImgData = fs.readFileSync('./peak_shopping_times.png').toString('base64');
+                    peekTimesImgSrc = "data:image/png;base64,".concat(ptImgData);
+                    rsImgData = fs.readFileSync('./revenue_and_sales_trends.png').toString('base64');
+                    rsImgSrc = "data:image/png;base64,".concat(rsImgData);
+                    templateData = {
+                        total_payments: sr.total_payments.toLocaleString(),
+                        total_volume: sr.total_volume || 'X',
+                        successful_payments: sr.successful_payments.toLocaleString(),
+                        success_rate: sr.success_rate.toFixed(2),
+                        peak_times_image: peekTimesImgSrc,
+                        revenue_sales_trend: rsImgSrc,
+                        open_disputes: da.open_disputes,
+                        resolved_last_month: da.resolved_last_month,
+                        mean_time_to_resolution: da.mean_time_to_resolution,
+                        best_product: satm.top_products_this_month[0][0],
+                        best_product_revenue: satm.top_products_this_month[0][1].toLocaleString(),
+                    };
+                    htmlContent = template(templateData);
+                    options = { format: 'A4' };
+                    file = { content: htmlContent };
+                    return [4 /*yield*/, pdf.generatePdf(file, options)];
                 case 1:
-                    pdfDoc = _w.sent();
-                    page = pdfDoc.addPage([612, 792]);
-                    navy = (0, pdf_lib_1.rgb)(0, 31 / 255, 63 / 255);
-                    lightcyan = (0, pdf_lib_1.rgb)(224 / 255, 255 / 255, 255 / 255);
-                    blue = (0, pdf_lib_1.rgb)(0, 123 / 255, 255 / 255);
-                    black = (0, pdf_lib_1.rgb)(0, 0, 0);
-                    // Title
-                    _b = (_a = page).drawText;
-                    _c = ['Your Month with Paystack'];
-                    _r = {
-                        x: 72, // 1 inch from the left
-                        y: 720, // 10 inches from the bottom
-                        size: 24,
-                        color: navy
-                    };
-                    return [4 /*yield*/, pdfDoc.embedFont('Helvetica-Bold')];
-                case 2:
-                    // Title
-                    _b.apply(_a, _c.concat([(_r.font = _w.sent(),
-                            _r)]));
-                    // Revenue Section
-                    _e = (_d = page).drawText;
-                    _f = ['Revenue Insights'];
-                    _s = {
-                        x: 72,
-                        y: 680,
-                        size: 16,
-                        color: black
-                    };
-                    return [4 /*yield*/, pdfDoc.embedFont('Helvetica-Bold')];
-                case 3:
-                    // Revenue Section
-                    _e.apply(_d, _f.concat([(_s.font = _w.sent(),
-                            _s)]));
-                    page.drawText("Processed ".concat(sr['total_payments'], " transactions with a total volume of X!"), {
-                        x: 72,
-                        y: 660,
-                        size: 12,
-                        color: blue,
-                    });
-                    page.drawText('Successful transactions:', {
-                        x: 72,
-                        y: 640,
-                        size: 12,
-                        color: black,
-                    });
-                    page.drawText("".concat(sr['successful_payments']), {
-                        x: 272,
-                        y: 640,
-                        size: 12,
-                        color: blue,
-                    });
-                    page.drawText('Success Rate:', {
-                        x: 72,
-                        y: 620,
-                        size: 12,
-                        color: black,
-                    });
-                    page.drawText("".concat(sr['success_rate'].toFixed(2), "%"), {
-                        x: 272,
-                        y: 620,
-                        size: 12,
-                        color: blue,
-                    });
-                    return [4 /*yield*/, pdfDoc.embedPng(fs.readFileSync(path.join(__dirname, 'peak_shopping_times.png')))];
-                case 4:
-                    peakTimesImage = _w.sent();
-                    page.drawImage(peakTimesImage, {
-                        x: 72,
-                        y: 300,
-                        width: 360,
-                        height: 180,
-                    });
-                    // Dispute Section
-                    _h = (_g = page).drawText;
-                    _j = ['Dispute Insights'];
-                    _t = {
-                        x: 72,
-                        y: 260,
-                        size: 16,
-                        color: black
-                    };
-                    return [4 /*yield*/, pdfDoc.embedFont('Helvetica-Bold')];
-                case 5:
-                    // Dispute Section
-                    _h.apply(_g, _j.concat([(_t.font = _w.sent(),
-                            _t)]));
-                    page.drawText("You had a total of ".concat(da['open_disputes'], " open disputes."), {
-                        x: 72,
-                        y: 240,
-                        size: 12,
-                        color: blue,
-                    });
-                    if (da['resolved_last_month'] > 0) {
-                        textXPosition = 72 + (2 * 72) + ("You had a total of".length * 6 / 100 * 72);
-                        page.drawText("".concat(da['resolved_last_month'], " were settled in less than ").concat(da['mean_time_to_resolution'], " days."), {
-                            x: textXPosition,
-                            y: 240,
-                            size: 12,
-                            color: black,
-                        });
-                    }
-                    bestProduct = satm['top_products_this_month'][0][0];
-                    bestProductRevenue = satm['top_products_this_month'][0][1];
-                    _l = (_k = page).drawText;
-                    _m = ['Best Performing Products'];
-                    _u = {
-                        x: 72,
-                        y: 200,
-                        size: 16,
-                        color: black
-                    };
-                    return [4 /*yield*/, pdfDoc.embedFont('Helvetica-Bold')];
-                case 6:
-                    _l.apply(_k, _m.concat([(_u.font = _w.sent(),
-                            _u)]));
-                    page.drawText('Most popular product:', {
-                        x: 72,
-                        y: 180,
-                        size: 12,
-                        color: black,
-                    });
-                    productTextXPosition = 72 + (2 * 72) + ('Most popular product:'.length * 6 / 100 * 72);
-                    page.drawText("".concat(bestProduct, " with revenue of $").concat(bestProductRevenue.toFixed(2).toLocaleString(), "."), {
-                        x: productTextXPosition,
-                        y: 180,
-                        size: 12,
-                        color: blue,
-                    });
-                    // Quick Insights Section
-                    _p = (_o = page).drawText;
-                    _q = ['Quick Insights'];
-                    _v = {
-                        x: 72,
-                        y: 160,
-                        size: 16,
-                        color: black
-                    };
-                    return [4 /*yield*/, pdfDoc.embedFont('Helvetica-Bold')];
-                case 7:
-                    // Quick Insights Section
-                    _p.apply(_o, _q.concat([(_v.font = _w.sent(),
-                            _v)]));
-                    return [4 /*yield*/, pdfDoc.save()];
-                case 8:
-                    pdfBytes = _w.sent();
-                    fs.writeFileSync('business_report.pdf', pdfBytes);
+                    pdfBuffer = _a.sent();
+                    fs.writeFileSync('business_report.pdf', pdfBuffer);
+                    console.log("PDF report generated successfully.");
                     return [2 /*return*/];
             }
         });
@@ -897,27 +781,24 @@ function loadData() {
         .then(function () { return __awaiter(_this, void 0, void 0, function () {
         var sr, cgr, da, sp, pp, psp, satm, rst, csg, pc;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    sr = calculateSuccessRate();
-                    cgr = customerGrowthAndRetention();
-                    da = disputeAnalysis();
-                    sp = subscriptionPerformance();
-                    pp = productPerformance();
-                    psp = peakShoppingTimes();
-                    satm = salesAnalysisThisMonth();
-                    rst = revenueAndSalesTrends();
-                    csg = customerSegmentation();
-                    pc = performanceComparison();
-                    // await plotCustomerGrowth(cgr.customers_gained_each_month);
-                    // await plotRevenueAndSales(rst.revenue_trends);
-                    return [4 /*yield*/, plotSubscriptionPerformance(sp.subscription_history)];
-                case 1:
-                    // await plotCustomerGrowth(cgr.customers_gained_each_month);
-                    // await plotRevenueAndSales(rst.revenue_trends);
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+            sr = calculateSuccessRate();
+            cgr = customerGrowthAndRetention();
+            da = disputeAnalysis();
+            sp = subscriptionPerformance();
+            pp = productPerformance();
+            psp = peakShoppingTimes();
+            satm = salesAnalysisThisMonth();
+            rst = revenueAndSalesTrends();
+            csg = customerSegmentation();
+            pc = performanceComparison();
+            // await plotCustomerGrowth(cgr.customers_gained_each_month);
+            // await plotRevenueAndSales(rst.revenue_trends);
+            // await plotSubscriptionPerformance(sp.subscription_history);
+            // await plotProductPerformance(pp.product_sales_history);
+            // await plotPeakShoppingTimes(psp.peak_shopping_times);
+            // await plotTopProducts(satm.top_products_this_month);
+            createPdfReport(sr, da, satm);
+            return [2 /*return*/];
         });
     }); })
         .catch(function (error) {
