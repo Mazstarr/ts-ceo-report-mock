@@ -7,11 +7,20 @@
     <title>Monthly Report</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            /* font-family: Arial, sans-serif; */
             margin: 0;
             padding: 20px;
             background-color: #f9f9f9;
             color: #333;
+        }
+        .blue-text {
+            color: #0EA9AE
+        }
+        
+        .cyan-blue-background {
+            background-color: #F2FBF3; 
+            padding: 20px;    
+            
         }
 
         h1 {
@@ -88,14 +97,12 @@
 
     <section>
         <p class="section-title">Peak Shopping Times</p>
-        <img src="{{ peak_times_image }}" alt="Peak Shopping Times"
-            width="360" height="180" />
+        <img src="{{ peak_times_image }}" alt="Peak Shopping Times" width="360" height="180" />
     </section>
 
     <section>
         <p class="section-title">Revenue and Sales Trend</p>
-        <img src="{{ revenue_sales_trend }}" alt="Revenue and Sales Trend"
-            width="360" height="180" />
+        <img src="{{ revenue_sales_trend }}" alt="Revenue and Sales Trend" width="360" height="180" />
     </section>
 
     <section>
@@ -110,10 +117,60 @@
                 class="highlight">{{ best_product_revenue }}</span>.</p>
     </section>
 
-    <section>
-        <p class="section-title">Quick Insights</p>
-        <!-- Additional insights here -->
-    </section>
+    <h1 style="text-align: center;"> AI-Powered Insights </h1>
+
+    <div class="cyan-blue-background">
+        <h2 class="blue-text" style="text-align: center;"> Action Plan </h2>
+
+        <p> <b>Disclaimer: </b> AI generated*. We at Paystack pride ourselves in providing the best service to our
+            merchants, and are currently
+            working on creating AI systems to understand your payment data and provide insights to elevate you.</p>
+
+
+
+        <h3 class="blue-text"> Some Key Q&A from your data </h3>
+        <p>
+        <ul>
+            {{#each responses_to_key_questions}}
+            <li>
+                <p> <b> {{question}} </b> {{answer}} </p>
+            </li>
+            {{/each}}
+
+        </ul>
+        </p>
+
+
+        <h4 class="blue-text"> Based on a thorough analysis of the gathered data, here are tailored action points for
+            the CEO of business XYZ to enhance growth and operational efficiency. </h4>
+
+        <p>
+        <ul>
+            {{#each action_plan}}
+            <li>
+                <h4>{{action_title}} </h4>
+                <p> <b> What: </b> {{reason_what}} </p>
+                <p> <b> Why (Relevance): </b> {{reason_why_relevance}} </p>
+                <p> <b> Why (Gains) : </b> {{reason_why_gains}} </p>
+                <p> <b> Steps to start: </b> 
+                    <ul>
+                        {{#each steps_to_start}}
+                        <li>{{this}}</li>
+                        {{/each}}
+                    </ul></p>
+            </li>
+            {{/each}}
+        </ul>
+        </p>
+
+
+        <h3 class="blue-text"> {{ceo_summary_paragraphs_title}} </h3>
+        <p> {{ceo_summary_paragraphs}} </p>
+
+
+    </div>
+
+
 </body>
 
 </html>

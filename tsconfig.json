@@ -1,13 +1,9 @@
 {
   "compilerOptions": {
     "target": "es6",
-    "module": "ESNext",
-    "moduleResolution": "node",
+    "module": "CommonJS",
     "outDir": "./dist",
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "typeRoots": ["node_modules/@types"],
-    "types": ["node"]
-    // ... other options
+    "allowSyntheticDefaultImports": true
   }
 }

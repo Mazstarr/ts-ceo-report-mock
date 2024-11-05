@@ -1,3 +1,4 @@
+require('dotenv').config();
 const csvParser = require('csv-parser');
 const path = require('path');
 const QuickChart = require('quickchart-js');
@@ -11,7 +12,7 @@ import { PDFDocument, rgb } from 'pdf-lib';
 import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } from 'date-fns';
 import * as fs from 'fs';
 import { writeFileSync } from 'fs';
-
+import axios from 'axios';
 
 
 // Constants
@@ -335,14 +336,14 @@ function disputeAnalysis() {
             const createdDate = new Date(dispute.date_created);
             const resolvedDate = new Date(dispute.date_resolved);
 
-            
+
             if (!isNaN(createdDate.getTime()) && !isNaN(resolvedDate.getTime())) {
                 return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
             } else {
-                return acc; 
+                return acc;
             }
         }, 0);
-        
+
         meanTimeToResolution = totalDays / resolvedDisputes.length;
     }
 
@@ -751,7 +752,7 @@ async function plotPeakShoppingTimes(peakTimes: Record<number, number>) {
 }
 
 
-async function createPdfReport(sr: any, da: any, satm: any) {
+async function createPdfReport(sr: any, da: any, satm: any, result: any) {
     const templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
     const template = Handlebars.compile(templateHtml);
 
@@ -773,6 +774,10 @@ async function createPdfReport(sr: any, da: any, satm: any) {
         mean_time_to_resolution: da.mean_time_to_resolution,
         best_product: satm.top_products_this_month[0][0],
         best_product_revenue: satm.top_products_this_month[0][1].toLocaleString(),
+        responses_to_key_questions: result.responses_to_key_questions,
+        action_plan: result.action_plan,
+        ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
+        ceo_summary_paragraphs: result.ceo_summary_paragraphs
     };
 
     const htmlContent = template(templateData);
@@ -782,6 +787,149 @@ async function createPdfReport(sr: any, da: any, satm: any) {
     fs.writeFileSync('business_report.pdf', pdfBuffer);
     console.log("PDF report generated successfully.");
 }
+
+async function getChatCompletion(messages: any[], response_format: any) {
+    try {
+        const apiKey = process.env.OPENAI_API_KEY;
+        const endpoint = 'https://api.openai.com/v1/chat/completions';
+        const response = await axios.post(
+            endpoint,
+            {
+                model: 'gpt-4o',
+                messages: messages,
+                response_format: response_format,
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+            }
+        );
+
+        return response.data;
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            console.error('Error response:', error.response?.data);
+            console.error('Error headers:', error.response?.headers);
+        } else {
+            console.error('Unexpected error:', error);
+        }
+    }
+
+}
+
+async function generateReport(rst: any, cgr: any, da: any, sp: any, pp: any, psp: any, satm: any, csg: any, pc: any, sr: any) {
+
+    try {
+        const messages = [
+            {
+                role: "user",
+                content: `
+                    You are a helpful data analyst for Paystack. Your goal is to generate accurate and useful CEO-level insights from all the processed payment data we will be feeding you.
+                `
+            },
+            {
+                role: "user",
+                content: `
+                    This is the gathered data from business XYZ, what do you make of it? Try to think of questions that can be answered to grow/help their business. Things they need to cut or pay more attention to.
+
+                    i.e. Should I move off this modality? What is the best play for my business right now? 
+
+                    This is the data. Start with using thinking tags and generating all possible questions that could be reasoned from the data. Then, analyse the data and filter down to the most relevant ones. 
+
+                    Next, try to answer ALL these questions while citing the relevant data provided.
+                    
+                    Next, re-evaluate your answers strictly, and extract the most important ones, then you can create your answer in a response tag.
+
+                    After all of this, I want you to craft an action plan for the CEO in a more friendly and encouraging tone, and then 1 or 2 paragraphs about the general state of their businesses and what they should be thinking of long term. 
+
+                    Please and please, ensure not to state things as obvious, give grounding to any statement you're making, it must be backed by data, principles and information, be sure to cite them like [1] and mention under your response if formulas or principles. Do not be condescending or too formal in your CEO response. Provide real value.
+
+                    When you cite something, do not let it be a vague rendition, let it be the real thing you are citing, in FULL.
+                    
+                    {{
+                        revenue_and_sales_trends : ${rst},
+                        customer_growth_and_retention : ${cgr},
+                        dispute_analysis : ${da},
+                        subscription_performance : ${sp},
+                        product_performance : ${pp},
+                        peak_shopping_times : ${psp},
+                        sales_analysis_this_month : ${satm['top_products_this_month']},
+                        customer_segmentation: ${csg}, 
+                        performance_comparison: ${pc},
+                        calculate_success_rate: ${sr},
+                    }}
+                `
+            }
+        ];
+        const response_format = {
+            type: "json_schema",
+            json_schema: {
+                name: "CEO_Summary",
+                schema: {
+                    type: "object",
+                    properties: {
+                        thinking: { type: "array", items: { type: "string" } },
+                        analysis_and_filtering: { type: "array", items: { type: "string" } },
+                        responses_to_key_questions: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    question: { type: "string" },
+                                    answer: { type: "string" }
+                                },
+                                required: ["question", "answer"],
+                                additionalProperties: false
+                            }
+                        },
+                        action_plan_intro: { type: "string" },
+                        action_plan: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    action_title: { type: "string" },
+                                    reason_what: { type: "string" },
+                                    reason_why_relevance: { type: "string" },
+                                    reason_why_gains: { type: "string" },
+                                    steps_to_start: {
+                                        type: "array",
+                                        items: { type: "string" }
+                                    }
+                                },
+                                required: ["action_title", "reason_what", "reason_why_relevance", "reason_why_gains", "steps_to_start"],
+                                additionalProperties: false
+                            }
+                        },
+                        ceo_summary_paragraphs_title: { type: "string" },
+                        ceo_summary_paragraphs: { type: "string" },
+                        references: { type: "array", items: { type: "string" } }
+                    },
+                    required: [
+                        "thinking", "analysis_and_filtering", "responses_to_key_questions",
+                        "action_plan_intro", "action_plan", "ceo_summary_paragraphs_title",
+                        "ceo_summary_paragraphs", "references"
+                    ],
+                    additionalProperties: false
+                },
+                strict: true
+            }
+        }
+
+        const data = await getChatCompletion(messages, response_format)
+        return data.choices[0].message.content;
+
+    }
+    catch (error: any) {
+        console.error("error occured while genratung report", error)
+    }
+
+}
+
+
+
 
 
 
@@ -802,13 +950,15 @@ function loadData() {
             const rst = revenueAndSalesTrends()
             const csg = customerSegmentation()
             const pc = performanceComparison()
-            // await plotCustomerGrowth(cgr.customers_gained_each_month);
-            // await plotRevenueAndSales(rst.revenue_trends);
-            // await plotSubscriptionPerformance(sp.subscription_history);
-            // await plotProductPerformance(pp.product_sales_history);
-            // await plotPeakShoppingTimes(psp.peak_shopping_times);
-            // await plotTopProducts(satm.top_products_this_month);
-            createPdfReport(sr, da, satm);
+            await plotCustomerGrowth(cgr.customers_gained_each_month);
+            await plotRevenueAndSales(rst.revenue_trends);
+            await plotSubscriptionPerformance(sp.subscription_history);
+            await plotProductPerformance(pp.product_sales_history);
+            await plotPeakShoppingTimes(psp.peak_shopping_times);
+            await plotTopProducts(satm.top_products_this_month);
+            const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+            await createPdfReport(sr, da, satm, JSON.parse(result));
+
         })
         .catch((error) => {
             console.error("Error loading data:", error);
