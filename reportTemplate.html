@@ -13,14 +13,15 @@
             background-color: #f9f9f9;
             color: #333;
         }
+
         .blue-text {
             color: #0EA9AE
         }
-        
+
         .cyan-blue-background {
-            background-color: #F2FBF3; 
-            padding: 20px;    
-            
+            background-color: #F2FBF3;
+            padding: 20px;
+
         }
 
         h1 {
@@ -85,37 +86,88 @@
 </head>
 
 <body>
-    <h1>Your Month with Paystack</h1>
+    <div style="text-align: center;">
+        <h1>Your Month with <span class="blue-text">Paystack</span></h1>
+        <br />
+        <br />
+        <h3>Thank you for another <b>great</b> month of allowing us to be your payment provider</h2>
+            <br />
+            <h2>This Month You...</h2>
+    </div>
+
+    <div class="cyan-blue-background">
+        <h2> ...made money </h2>
+
+        <p> Processed <span class="blue-text"> {{ total_payments }} </span> transactions with a total volume of <span
+                class="blue-text"> {{ total_volume }} </span>! </p>
+        <p> Successful transactions: <span class="blue-text"> {{ successful_payments }} </span></p>
+        <p> Success Rate: <span class="blue-text"> {{ success_rate }}% </span></p>
+    </div>
 
     <section>
-        <p class="section-title">Revenue Insights</p>
-        <p>Processed <span class="highlight">{{ total_payments }}</span> transactions with a total volume of <span
-                class="highlight">{{ total_volume }}</span>!</p>
-        <p>Successful transactions: <span class="highlight">{{ successful_payments }}</span></p>
-        <p>Success Rate: <span class="highlight">{{ success_rate }}%</span></p>
+        <p class="section-title">Revenue Trend</p>
+        <img src="{{ revenue_trend_image }}" alt="Peak Shopping Times" width="360" height="180" />
     </section>
 
     <section>
-        <p class="section-title">Peak Shopping Times</p>
-        <img src="{{ peak_times_image }}" alt="Peak Shopping Times" width="360" height="180" />
+        <p class="section-title">Transaction Trend</p>
+        <img src="{{ transaction_trend_image }}" alt="Peak Shopping Times" width="360" height="180" />
     </section>
 
-    <section>
-        <p class="section-title">Revenue and Sales Trend</p>
-        <img src="{{ revenue_sales_trend }}" alt="Revenue and Sales Trend" width="360" height="180" />
-    </section>
+    <div class="cyan-blue-background">
+        <h2> ...sold products </h2>
 
-    <section>
-        <p class="section-title">Dispute Insights</p>
+        <img src="{{ top_products_image }}" alt="top products" width="360" height="180" />
+        <p>Product performance</p>
+
+        <p> Your best product this month was <span class="blue-text"> {{ best_product }} </span>
+            and it netted you <span class="blue-text"> #{{ best_product_revenue }} </span> ! </p>
+
+        <img src="{{ subscription_performance_image }}" alt="Peak Shopping Times" width="360" height="180" />
+        <p>Subscription performance</p>
+
+        <p> You had <span class="blue-text"> {{ total_subscriptions }} </span> subscription payments this month, which netted you
+            <span class="blue-text"> #{{ subscription_volume }} </span>
+        </p>
+
+
+    </div>
+
+    <div class="cyan-blue-background">
+        <h2> ...had customers </h2>
+        <img src="{{ customer_growth_image }}" alt="customer growth image" width="360" height="180" />
+        <p>Customers gained each month</p>
+
+        <p> Just last month, you gained <span class="blue-text"> {{ new_customers }} </span> new customers! </p>
+        <img src="{{ customer_segmentation_image }}" alt="customer" width="360" height="180" />
+        <p>Customer distribution</p>
+
+        <p> Your customer retention rate over last year is currently sitting at <span class="blue-text"> {{
+                retention_rate_over_last_year }}% </span>.
+            You might have to work on that. </p>
+
+    </div>
+
+    <div class="cyan-blue-background">
+        <h2> How we were able to help </h2>
+
+        <h3> Disputes </h3>
         <p>You had a total of <span class="highlight">{{ open_disputes }}</span> open disputes.</p>
         <p>{{ resolved_last_month }} were settled in less than {{ mean_time_to_resolution }} days.</p>
-    </section>
+        </p>
 
-    <section>
-        <p class="section-title">Best Performing Products</p>
-        <p>Most popular product: <span class="highlight">{{ best_product }}</span> with revenue of $<span
-                class="highlight">{{ best_product_revenue }}</span>.</p>
-    </section>
+
+    </div>
+
+    <div class="cyan-blue-background">
+        <h2> Quick insights </h2>
+
+        <h3> Peak shopping times </h3>
+        <img src="{{ peak_times_image }}" alt="Peak Shopping Times" width="360" height="180" />
+        <p>Peak shopping times"</p>
+
+        <p> Peak shopping times are from: 0h with 2864 transactions. </p>
+    </div>
 
     <h1 style="text-align: center;"> AI-Powered Insights </h1>
 
@@ -141,7 +193,8 @@
         </p>
 
 
-        <h4 class="blue-text"> Based on a thorough analysis of the gathered data, here are tailored action points for
+        <h4 class="blue-text"> Based on a thorough analysis of the gathered data, here are tailored action points
+            for
             the CEO of business XYZ to enhance growth and operational efficiency. </h4>
 
         <p>
@@ -152,12 +205,13 @@
                 <p> <b> What: </b> {{reason_what}} </p>
                 <p> <b> Why (Relevance): </b> {{reason_why_relevance}} </p>
                 <p> <b> Why (Gains) : </b> {{reason_why_gains}} </p>
-                <p> <b> Steps to start: </b> 
-                    <ul>
-                        {{#each steps_to_start}}
-                        <li>{{this}}</li>
-                        {{/each}}
-                    </ul></p>
+                <p> <b> Steps to start: </b>
+                <ul>
+                    {{#each steps_to_start}}
+                    <li>{{this}}</li>
+                    {{/each}}
+                </ul>
+                </p>
             </li>
             {{/each}}
         </ul>

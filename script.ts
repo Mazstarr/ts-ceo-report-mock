@@ -13,6 +13,7 @@ import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } fr
 import * as fs from 'fs';
 import { writeFileSync } from 'fs';
 import axios from 'axios';
+import { height, width } from 'pdfkit/js/page';
 
 
 // Constants
@@ -257,7 +258,18 @@ function loadDisputesData(): Promise<void> {
     });
 }
 
+function getMonthlyPayments(): Payment[] {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
 
+    const monthlySales = payments_df.data.filter(payment => {
+        const paymentDate = new Date(payment.payment_date);
+        return paymentDate.getFullYear() === currentYear && paymentDate.getMonth() === currentMonth;
+    });
+
+    return monthlySales;
+}
 
 // Function to analyze revenue and sales trends over the past year
 function revenueAndSalesTrends() {
@@ -315,7 +327,7 @@ function customerGrowthAndRetention() {
 
     return {
         customers_gained_each_month: customerGrowth,
-        retention_rate_over_last_year: retentionRate,
+        retention_rate_over_last_year: retentionRate.toFixed(2),
     };
 }
 
@@ -365,12 +377,13 @@ function subscriptionPerformance() {
     const sortedPayments = payments_df.data.sort((a, b) =>
         a.payment_date.getTime() - b.payment_date.getTime()
     );
-    const subscriptionItems = sortedPayments.filter(payment => payment.item.includes("subscription"));
+    const subscriptionItems = getMonthlyPayments().filter(payment => payment.item.includes("subscription"));
 
     const totalSubscriptions = subscriptionItems.length;
+    const subscriptionVolume = subscriptionItems.reduce((sum, sale) => sum + sale.amount, 0);
     const uniqueSubscribers = new Set(subscriptionItems.map(payment => payment.customer_email)).size;
 
-    const subscriptionHistory = subscriptionItems.reduce((acc, payment) => {
+    const subscriptionHistory = sortedPayments.filter(payment => payment.item.includes("subscription")).reduce((acc, payment) => {
 
         const paymentDate = format(payment.payment_date, 'yyyy-MM');
         if (!acc[paymentDate]) {
@@ -386,6 +399,7 @@ function subscriptionPerformance() {
 
     return {
         total_subscriptions: totalSubscriptions,
+        subscription_volume: subscriptionVolume,
         unique_subscribers: uniqueSubscribers,
         subscription_history: subscriptionHistory,
     };
@@ -427,9 +441,6 @@ function peakShoppingTimes() {
 
     console.log("Peak Shopping Times:", hourCounts);
 
-    // Visualization placeholder (since actual visualization is out of scope in pure TypeScript)
-    // Use a charting library such as Chart.js in a real application
-
     return {
         peak_shopping_times: hourCounts
     };
@@ -441,10 +452,7 @@ function salesAnalysisThisMonth() {
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth();
 
-    const monthlySales = payments_df.data.filter(payment => {
-        const paymentDate = new Date(payment.payment_date);
-        return paymentDate.getFullYear() === currentYear && paymentDate.getMonth() === currentMonth;
-    });
+    const monthlySales = getMonthlyPayments();
 
     const productRevenue = monthlySales.reduce((acc, payment) => {
         acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
@@ -456,7 +464,7 @@ function salesAnalysisThisMonth() {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
 
-    console.log("Top Products This Month:", topProducts);
+    console.log("Top Products This Month:", topProducts, topProducts[0][0]);
 
     return {
         top_products_this_month: topProducts,
@@ -467,29 +475,51 @@ function salesAnalysisThisMonth() {
 
 // Function for customer segmentation
 function customerSegmentation() {
-    const oneMonthAgo = subMonths(new Date(), 1);
-    const newCustomers = customers_df.data.filter(customer => customer.last_transaction && customer.last_transaction >= oneMonthAgo);
-    const totalCustomers = customers_df.data.length;
-    const returningCustomersCount = totalCustomers - newCustomers.length;
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-    const percentageReturning = (returningCustomersCount / totalCustomers) * 100;
+    // Identify new customers (added this month)
+    const newCustomers = customers_df.data.filter(customer =>
+        customer.added_on && customer.added_on >= startOfMonth && customer.added_on <= endOfMonth
+    );
+
+    // Identify returning customers (added before this month and made a transaction this month)
+    const returningCustomers = customers_df.data.filter(customer =>
+        customer.added_on && customer.added_on < startOfMonth &&
+        customer.last_transaction && customer.last_transaction >= startOfMonth && customer.last_transaction <= endOfMonth
+    );
+
+    // Identify non-returning customers (added before this month and made no transaction this month)
+    const nonReturningCustomers = customers_df.data.filter(customer =>
+        customer.added_on && customer.added_on < startOfMonth &&
+        (!customer.last_transaction || customer.last_transaction < startOfMonth)
+    );
+
+    const totalCustomers = customers_df.data.length;
+
+    // Calculations
+    const percentageReturning = (returningCustomers.length / totalCustomers) * 100;
     const percentageNew = (newCustomers.length / totalCustomers) * 100;
+    const percentageNonReturning = (nonReturningCustomers.length / totalCustomers) * 100;
 
     console.log("Customer Segmentation:", {
         new_customers: newCustomers.length,
-        returning_customers: returningCustomersCount,
+        returning_customers: returningCustomers.length,
+        non_returning_customers: nonReturningCustomers.length,
         total_customers: totalCustomers,
         percentage_returning: percentageReturning,
-        percentage_new: percentageNew
+        percentage_new: percentageNew,
+        percentage_non_returning: percentageNonReturning
     });
 
     return {
         new_customers: newCustomers.length,
-        returning_customers: returningCustomersCount,
+        returning_customers: returningCustomers.length,
+        non_returning_customers: nonReturningCustomers.length,
         total_customers: totalCustomers,
-        percentage_returning: percentageReturning,
-        percentage_new: percentageNew
-    };
+  
+    }
 }
 
 // Function to compare performance between current and last month
@@ -531,21 +561,28 @@ function performanceComparison() {
 
 // Function to calculate success rate
 function calculateSuccessRate() {
-    const totalPayments = payments_df.data.length;
-    const successfulPayments = payments_df.data.filter(payment => payment.status === 'Success').length;
-    const failedPayments = payments_df.data.filter(payment => payment.status === 'Failure').length;
+
+
+    const monthlySales = getMonthlyPayments();
+
+    const totalPayments = monthlySales.length;
+    const totalVolume = monthlySales.reduce((sum, sale) => sum + sale.amount, 0);
+    const successfulPayments = monthlySales.filter(payment => payment.status === 'Success').length;
+    const failedPayments = monthlySales.filter(payment => payment.status === 'Failure').length;
 
     const successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
 
     console.log("Success Rate Calculation:", {
         total_payments: totalPayments,
         successful_payments: successfulPayments,
+        total_volume: totalVolume,
         failed_payments: failedPayments,
         success_rate: successRate
     });
 
     return {
         total_payments: totalPayments,
+        total_volume: totalVolume,
         successful_payments: successfulPayments,
         failed_payments: failedPayments,
         success_rate: successRate
@@ -593,6 +630,39 @@ async function plotCustomerGrowth(customerGrowth: Record<string, number>) {
     await saveChartImage(chart, 'customer_growth.png');
 }
 
+async function plotCustomerSegmentationPie(segmentationData: { new_customers: number; returning_customers: number; non_returning_customers: number }) {
+    const chart = new QuickChart();
+    chart.setConfig({
+        type: 'pie',
+        data: {
+            labels: ['New Customers', 'Returning Customers', 'Non-Returning Customers'],
+            datasets: [{
+                data: [
+                    segmentationData.new_customers, 
+                    segmentationData.returning_customers, 
+                    segmentationData.non_returning_customers
+                ],
+                backgroundColor: [
+                    'rgba(54, 162, 235, 0.6)',  
+                    'rgba(255, 99, 132, 0.6)',  
+                    'rgba(153, 102, 255, 0.6)' 
+                ],
+            }]
+        },
+        options: {
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Customer Segmentation (New vs. Returning vs. Non-Returning)'
+                }
+            }
+        }
+    });
+
+    await saveChartImage(chart, 'customer_segmentation_pie.png');
+}
+
+
 
 async function plotRevenueAndSales(revenueTrends: Record<string, { total_revenue: number; total_transactions: number; }>) {
 
@@ -631,6 +701,74 @@ async function plotRevenueAndSales(revenueTrends: Record<string, { total_revenue
     });
 
     await saveChartImage(chart, 'revenue_and_sales_trends.png');
+}
+
+async function plotRevenue(revenueTrends: Record<string, { total_revenue: number }>) {
+
+    const revenueTrendsArray = Object.entries(revenueTrends).map(([payment_date, { total_revenue }]) => ({
+        payment_date,
+        total_revenue,
+    }));
+
+    const chart = new QuickChart();
+    chart.setConfig({
+        type: 'line',
+        data: {
+            labels: revenueTrendsArray.map(entry => entry.payment_date),
+            datasets: [
+                {
+                    label: 'Total Revenue',
+                    data: revenueTrendsArray.map(entry => entry.total_revenue),
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    fill: false,
+                }
+            ]
+        },
+        options: {
+            plugins: {
+                title: { display: true, text: 'Total Revenue Over the Past Year' },
+            },
+            scales: { y: { beginAtZero: true } },
+        }
+    });
+
+    await saveChartImage(chart, 'total_revenue_trends.png');
+}
+
+
+async function plotTransactions(revenueTrends: Record<string, { total_transactions: number; }>) {
+
+    const revenueTrendsArray = Object.entries(revenueTrends).map(([payment_date, { total_transactions }]) => ({
+        payment_date,
+        total_transactions,
+    }));
+
+    const chart = new QuickChart();
+    chart.setConfig({
+        type: 'line',
+        data: {
+            labels: revenueTrendsArray.map(entry => entry.payment_date),
+            datasets: [
+                {
+                    label: 'Total Transactions',
+                    data: revenueTrendsArray.map(entry => entry.total_transactions),
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    fill: false,
+                }
+            ]
+        },
+        options: {
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Total Transactions Over the Past Year'
+                },
+            },
+            scales: { y: { beginAtZero: true } },
+        }
+    });
+
+    await saveChartImage(chart, 'total_transaction_trends.png');
 }
 
 
@@ -700,15 +838,15 @@ async function plotProductPerformance(productSalesHistory: Record<string, { tota
 
 
 async function plotTopProducts(topProducts: [string, number][]) {
-    const sortedData = topProducts.sort((a, b) => a[1] - b[1]);
+
     const chart = new QuickChart();
     chart.setConfig({
         type: 'bar',
         data: {
-            labels: sortedData.map(entry => entry[0]),
+            labels: topProducts.map(entry => entry[0]),
             datasets: [{
                 label: 'Total Revenue',
-                data: sortedData.map(entry => entry[1]),
+                data: topProducts.map(entry => entry[1]),
                 backgroundColor: 'rgba(255, 159, 64, 0.6)',
             }]
         },
@@ -751,24 +889,31 @@ async function plotPeakShoppingTimes(peakTimes: Record<number, number>) {
     await saveChartImage(chart, 'peak_shopping_times.png');
 }
 
-
-async function createPdfReport(sr: any, da: any, satm: any, result: any) {
+function getImageUrl(imgPath: string) {
+    const imgData = fs.readFileSync(imgPath).toString('base64');
+    const imgSrc = `data:image/png;base64,${imgData}`;
+    return imgSrc;
+}
+async function createPdfReport(sr: any, da: any, satm: any, sp: any, cgr: any, csg: any, result: any) {
     const templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
     const template = Handlebars.compile(templateHtml);
-
-    const ptImgData = fs.readFileSync('./peak_shopping_times.png').toString('base64');
-    const peekTimesImgSrc = `data:image/png;base64,${ptImgData}`;
-
-    const rsImgData = fs.readFileSync('./revenue_and_sales_trends.png').toString('base64');
-    const rsImgSrc = `data:image/png;base64,${rsImgData}`;
-
     const templateData = {
         total_payments: sr.total_payments.toLocaleString(),
-        total_volume: sr.total_volume || 'X',
+        total_volume: sr.total_volume.toLocaleString() || 'X',
         successful_payments: sr.successful_payments.toLocaleString(),
         success_rate: sr.success_rate.toFixed(2),
-        peak_times_image: peekTimesImgSrc,
-        revenue_sales_trend: rsImgSrc,
+        peak_times_image: getImageUrl('./peak_shopping_times.png'),
+        revenue_sales_trend: getImageUrl('./revenue_and_sales_trends.png'),
+        revenue_trend_image: getImageUrl('./total_revenue_trends.png'),
+        transaction_trend_image: getImageUrl('./total_transaction_trends.png'),
+        top_products_image: getImageUrl('./top_products_this_month.png'),
+        subscription_performance_image: getImageUrl('./subscription_performance.png'),
+        customer_growth_image: getImageUrl('./customer_growth.png'),
+        customer_segmentation_image: getImageUrl('./customer_segmentation_pie.png'),
+        total_subscriptions: sp.total_subscriptions,
+        subscription_volume: sp.subscription_volume.toLocaleString(),
+        new_customers: csg.new_customers,
+        retention_rate_over_last_year: cgr.retention_rate_over_last_year,
         open_disputes: da.open_disputes,
         resolved_last_month: da.resolved_last_month,
         mean_time_to_resolution: da.mean_time_to_resolution,
@@ -923,14 +1068,10 @@ async function generateReport(rst: any, cgr: any, da: any, sp: any, pp: any, psp
 
     }
     catch (error: any) {
-        console.error("error occured while genratung report", error)
+        console.error("error occured while genrating report", error)
     }
 
 }
-
-
-
-
 
 
 function loadData() {
@@ -950,14 +1091,17 @@ function loadData() {
             const rst = revenueAndSalesTrends()
             const csg = customerSegmentation()
             const pc = performanceComparison()
+            await plotCustomerSegmentationPie(csg)
             await plotCustomerGrowth(cgr.customers_gained_each_month);
             await plotRevenueAndSales(rst.revenue_trends);
+            await plotRevenue(rst.revenue_trends);
+            await plotTransactions(rst.revenue_trends)
             await plotSubscriptionPerformance(sp.subscription_history);
             await plotProductPerformance(pp.product_sales_history);
             await plotPeakShoppingTimes(psp.peak_shopping_times);
             await plotTopProducts(satm.top_products_this_month);
             const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-            await createPdfReport(sr, da, satm, JSON.parse(result));
+            await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
 
         })
         .catch((error) => {
