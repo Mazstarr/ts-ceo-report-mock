@@ -42,467 +42,367 @@ var path = require('path');
 var QuickChart = require('quickchart-js');
 var Handlebars = require('handlebars');
 var pdf = require('html-pdf-node');
-var faker_1 = require("@faker-js/faker");
-var fs_1 = require("fs");
 var date_fns_1 = require("date-fns");
 var fs = require("fs");
-var fs_2 = require("fs");
+var fs_1 = require("fs");
 var axios_1 = require("axios");
-// Constants
-var NUM_CUSTOMERS = 300;
-var NUM_PAYMENTS = 5000;
-var ITEMS = [
-    ["item #1 from storefront", 5000],
-    ["item #2 from storefront", 40000],
-    ["item #3 from storefront", 3000],
-    ["service", 6000],
-    ["physical goods", 40000]
-];
-var SUBS = [
-    ["subscription item #1 (monthly)", 7000],
-    ["subscription item #2 (monthly)", 30000],
-];
-var CHANNELS = ["Card", "POS", "Bank", "USSD", "Direct Debit"];
-var CHURN_RATE = 0.2; // 20% churn rate
-var DISPUTE_STATUS = ["Open", "Resolved"];
-var GEOGRAPHIES = ["North America", "Europe", "Asia", "South America"];
-var PAYMENT_STATUSES = ["Success", "Failed", "Reversed", "Abandoned", "Queued"];
-// Customers
-var customers = [];
-for (var i = 0; i < NUM_CUSTOMERS; i++) {
-    var addedOnDate = faker_1.faker.date.past({ years: 3 });
-    customers.push({
-        name: faker_1.faker.person.fullName(),
-        email: faker_1.faker.internet.email(),
-        phone: faker_1.faker.phone.number(),
-        added_on: addedOnDate,
-        last_transaction: null,
-        active: true
-    });
-}
-// Payments and disputes
-var payments = [];
-var disputes = [];
-customers.forEach(function (customer) {
-    var customerAddedOn = customer.added_on;
-    // Simulate subscriptions
-    if (Math.random() > 0.5) {
-        if (Math.random() > CHURN_RATE) {
-            var subscription = SUBS[Math.floor(Math.random() * SUBS.length)];
-            var subscriptionStartDate = new Date(customerAddedOn.getTime() + Math.floor(Math.random() * 31) * 24 * 60 * 60 * 1000);
-            for (var month = 0; month < 12; month++) { // 1 year of monthly payments
-                var paymentDate = new Date(subscriptionStartDate.getTime() + month * 30 * 24 * 60 * 60 * 1000);
-                if (paymentDate <= new Date()) {
-                    payments.push({
-                        customer_email: customer.email,
-                        payment_date: paymentDate,
-                        amount: subscription[1],
-                        channel: CHANNELS[Math.floor(Math.random() * CHANNELS.length)],
-                        item: subscription[0],
-                        geography: GEOGRAPHIES[Math.floor(Math.random() * GEOGRAPHIES.length)]
-                    });
-                    customer.last_transaction = paymentDate;
-                }
-            }
-        }
-    }
-    // Simulate one-off purchases for active customers
-    var numOneOffPurchases = Math.floor(Math.random() * 10) + 1;
-    for (var j = 0; j < numOneOffPurchases; j++) {
-        var item = ITEMS[Math.floor(Math.random() * ITEMS.length)];
-        var purchaseDate = faker_1.faker.date.between({ from: customerAddedOn, to: new Date() });
-        if (purchaseDate <= new Date()) {
-            payments.push({
-                customer_email: customer.email,
-                payment_date: purchaseDate,
-                amount: item[1],
-                channel: CHANNELS[Math.floor(Math.random() * CHANNELS.length)],
-                item: item[0],
-                geography: GEOGRAPHIES[Math.floor(Math.random() * GEOGRAPHIES.length)],
-                status: PAYMENT_STATUSES[Math.floor(Math.random() * PAYMENT_STATUSES.length)]
-            });
-            customer.last_transaction = purchaseDate;
-            // Randomly create disputes for some transactions
-            if (Math.random() < 0.1 && Math.random() < 0.1) { // 1% chance of dispute
-                var disputeCreated = purchaseDate;
-                var disputeResolved = Math.random() < 0.8 ? new Date(disputeCreated.getTime() + Math.floor(Math.random() * (30 - 5 + 1) + 5) * 24 * 60 * 60 * 1000) : null;
-                disputes.push({
-                    customer_email: customer.email,
-                    date_created: disputeCreated,
-                    date_resolved: disputeResolved,
-                    status: disputeResolved ? 'Resolved' : 'Open'
-                });
-            }
-        }
-    }
-});
-// Convert payments and customers data to CSV format
-var paymentsCsv = payments.map(function (payment) { return "".concat(payment.customer_email, ",").concat(payment.payment_date.toISOString(), ",").concat(payment.amount, ",").concat(payment.channel, ",").concat(payment.item, ",").concat(payment.geography, ",").concat(payment.status || ''); }).join('\n');
-var customersCsv = customers.map(function (customer) { return "".concat(customer.name, ",").concat(customer.email, ",").concat(customer.phone, ",").concat(customer.added_on.toISOString(), ",").concat(customer.last_transaction ? customer.last_transaction.toISOString() : '', ",").concat(customer.active); }).join('\n');
-var disputesCsv = disputes.map(function (dispute) { return "".concat(dispute.customer_email, ",").concat(dispute.date_created.toISOString(), ",").concat(dispute.date_resolved ? dispute.date_resolved.toISOString() : '', ",").concat(dispute.status); }).join('\n');
-// Save to CSV files
-fs.writeFileSync('fake_customers_data.csv', customersCsv);
-fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
-fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
-console.log("Customers:");
-console.log(customers.slice(0, 5));
-console.log("\nPayments:");
-console.log(payments.slice(0, 5));
-console.log("\nDisputes:");
-console.log(disputes.slice(0, 5));
-function createDataFrame(data) {
-    return {
-        data: data,
-        head: function (n) {
-            return this.data.slice(0, n);
-        },
-    };
-}
-function addDataToDataFrame(dataFrame, newData) {
-    dataFrame.data.push(newData);
-}
-// Read data from csvt
-var payments_df = createDataFrame([]);
-var customers_df = createDataFrame([]);
-var disputes_df = createDataFrame([]);
-var customersHeaders = ['name', 'email', 'phone', 'added_on', 'last_transaction', 'active'];
-var paymentsHeaders = [
-    'customer_email',
-    'payment_date',
-    'amount',
-    'channel',
-    'item',
-    'geography',
-    'status'
-];
-var disputesHeaders = [
-    'customer_email',
-    'date_created',
-    'date_resolved',
-    'status'
-];
-function loadPaymentsData() {
-    return new Promise(function (resolve, reject) {
-        (0, fs_1.createReadStream)('fake_payments_data.csv')
-            .pipe(csvParser({ headers: paymentsHeaders }))
-            .on('data', function (row) {
-            addDataToDataFrame(payments_df, {
-                customer_email: row.customer_email,
-                payment_date: new Date(row.payment_date),
-                amount: parseFloat(row.amount),
-                channel: row.channel,
-                item: row.item,
-                geography: row.geography,
-                status: row.status || undefined
-            });
-        })
-            .on('end', function () {
-            console.log("Payments data loaded.");
-            resolve();
-        })
-            .on('error', reject);
-    });
-}
-function loadCustomersData() {
-    return new Promise(function (resolve, reject) {
-        (0, fs_1.createReadStream)('fake_customers_data.csv')
-            .pipe(csvParser({ headers: customersHeaders }))
-            .on('data', function (row) {
-            addDataToDataFrame(customers_df, {
-                name: row.name,
-                email: row.email,
-                phone: row.phone,
-                added_on: new Date(row.added_on),
-                last_transaction: row.last_transaction ? new Date(row.last_transaction) : null,
-                active: row.active === 'true'
-            });
-        })
-            .on('end', function () {
-            console.log("Customers data loaded.");
-            resolve();
-        })
-            .on('error', reject);
-    });
-}
-function loadDisputesData() {
-    return new Promise(function (resolve, reject) {
-        (0, fs_1.createReadStream)('fake_disputes_data.csv')
-            .pipe(csvParser({ headers: disputesHeaders }))
-            .on('data', function (row) {
-            addDataToDataFrame(disputes_df, {
-                customer_email: row.customer_email,
-                date_created: new Date(row.date_created),
-                date_resolved: row.date_resolved ? new Date(row.date_resolved) : null,
-                status: row.status
-            });
-        })
-            .on('end', function () {
-            console.log("Disputes data loaded.");
-            resolve();
-        })
-            .on('error', reject);
-    });
-}
-function getMonthlyPayments() {
-    var currentDate = new Date();
-    var currentYear = currentDate.getFullYear();
-    var currentMonth = currentDate.getMonth();
-    var monthlySales = payments_df.data.filter(function (payment) {
-        var paymentDate = new Date(payment.payment_date);
-        return paymentDate.getFullYear() === currentYear && paymentDate.getMonth() === currentMonth;
-    });
-    return monthlySales;
-}
+var constants_1 = require("./constants");
+var db_connection_1 = require("./db_connection");
+var merchant_id = 100043;
 // Function to analyze revenue and sales trends over the past year
-function revenueAndSalesTrends() {
-    var lastYear = (0, date_fns_1.subYears)(new Date(), 1);
-    var sortedPayments = payments_df.data.sort(function (a, b) {
-        return a.payment_date.getTime() - b.payment_date.getTime();
-    });
-    var recentPayments = sortedPayments.filter(function (payment) { return payment.payment_date >= lastYear; });
-    var revenueTrends = recentPayments.reduce(function (acc, payment) {
-        var paymentDate = (0, date_fns_1.format)(payment.payment_date, 'yyyy-MM');
-        if (!acc[paymentDate]) {
-            acc[paymentDate] = { total_revenue: 0, total_transactions: 0 };
+var revenueAndSalesTrends = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfLastYear, recentPayments, revenueTrends;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND successful = ?', [startOfLastYear, true])];
+            case 1:
+                recentPayments = _a.sent();
+                revenueTrends = recentPayments.reduce(function (acc, payment) {
+                    var paymentDate = (0, date_fns_1.format)(payment.datetime_created_at_local, 'yyyy-MM');
+                    if (!acc[paymentDate]) {
+                        acc[paymentDate] = { total_revenue: 0, total_transactions: 0 };
+                    }
+                    acc[paymentDate].total_revenue += parseFloat(payment.amount_transaction);
+                    acc[paymentDate].total_transactions += 1;
+                    return acc;
+                }, {});
+                console.log("\nRevenue and Sales Trends Over the Past Year:");
+                console.log(revenueTrends);
+                return [2 /*return*/, {
+                        revenue_trends: revenueTrends
+                    }];
         }
-        acc[paymentDate].total_revenue += payment.amount;
-        acc[paymentDate].total_transactions += 1;
-        return acc;
-    }, {});
-    console.log("\nRevenue and Sales Trends Over the Past Year:");
-    console.log(revenueTrends);
-    return {
-        revenue_trends: revenueTrends
-    };
-}
+    });
+}); };
 // Function to analyze customer growth and retention rates
-function customerGrowthAndRetention() {
-    var oneYearAgo = (0, date_fns_1.subYears)(new Date(), 1);
-    var sixMonthsAgo = (0, date_fns_1.subDays)(new Date(), 180);
-    var sortedCustomers = customers_df.data.sort(function (a, b) {
-        return a.added_on.getTime() - b.added_on.getTime();
-    });
-    var customerGrowth = sortedCustomers.reduce(function (acc, customer) {
-        var addedOnMonth = (0, date_fns_1.format)(customer.added_on, 'yyyy-MM');
-        if (!acc[addedOnMonth]) {
-            acc[addedOnMonth] = 0;
+var customerGrowthAndRetention = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfLastYear, startOfSixMonthsAgo, rawQuery, params, recentCustomers, customerGrowth, newCustomers, endCustomers, retentionRate;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+                startOfSixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+                rawQuery = "\n        WITH ranked_customers AS (\n            SELECT *, \n                ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n            FROM ??\n            WHERE ?? = ? AND customer_created_at >= ?\n        )\n        SELECT *\n        FROM ranked_customers\n        WHERE row_num = 1\n    ";
+                params = [constants_1.TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfLastYear.toISOString()];
+                return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, params)];
+            case 1:
+                recentCustomers = _a.sent();
+                customerGrowth = recentCustomers.reduce(function (acc, customer) {
+                    var addedOnMonth = (0, date_fns_1.format)(customer.customer_created_at, 'yyyy-MM');
+                    if (!acc[addedOnMonth]) {
+                        acc[addedOnMonth] = 0;
+                    }
+                    acc[addedOnMonth]++;
+                    return acc;
+                }, {});
+                newCustomers = recentCustomers.length;
+                endCustomers = recentCustomers.filter(function (customer) { return customer.customer_created_at >= startOfSixMonthsAgo; }).length;
+                retentionRate = newCustomers > 0 ? ((endCustomers) / newCustomers) * 100 : 0;
+                console.log("\nCustomer Growth (New Customers per Month):");
+                console.log(customerGrowth);
+                console.log("\nCustomer Retention Rate: ".concat(retentionRate.toFixed(2), "%"));
+                return [2 /*return*/, {
+                        customers_gained_each_month: customerGrowth,
+                        retention_rate_over_last_year: retentionRate.toFixed(2),
+                    }];
         }
-        acc[addedOnMonth]++;
-        return acc;
-    }, {});
-    var startCustomers = customers_df.data.filter(function (customer) { return customer.added_on <= oneYearAgo; }).length;
-    var newCustomers = customers_df.data.filter(function (customer) { return customer.added_on >= oneYearAgo; }).length;
-    var endCustomers = customers_df.data.filter(function (customer) { return customer.last_transaction >= sixMonthsAgo; }).length;
-    var retentionRate = startCustomers > 0 ? ((endCustomers - newCustomers) / startCustomers) * 100 : 0;
-    console.log("\nCustomer Growth (New Customers per Month):");
-    console.log(customerGrowth);
-    console.log("\nCustomer Retention Rate: ".concat(retentionRate.toFixed(2), "%"));
-    return {
-        customers_gained_each_month: customerGrowth,
-        retention_rate_over_last_year: retentionRate.toFixed(2),
-    };
-}
+    });
+}); };
 // Function to analyze disputes
-function disputeAnalysis() {
-    var disputesOpen = disputes_df.data.filter(function (dispute) { return dispute.status === "Open"; }).length;
-    var disputesResolvedLastMonth = disputes_df.data.filter(function (dispute) {
-        return dispute.status === "Resolved" &&
-            dispute.date_created >= (0, date_fns_1.subMonths)(new Date(), 1);
-    }).length;
-    var resolvedDisputes = disputes_df.data.filter(function (dispute) { return dispute.status === "Resolved"; });
-    var meanTimeToResolution = 0;
-    if (resolvedDisputes.length > 0) {
-        var totalDays = resolvedDisputes.reduce(function (acc, dispute) {
-            var createdDate = new Date(dispute.date_created);
-            var resolvedDate = new Date(dispute.date_resolved);
-            if (!isNaN(createdDate.getTime()) && !isNaN(resolvedDate.getTime())) {
-                return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
-            }
-            else {
-                return acc;
-            }
-        }, 0);
-        meanTimeToResolution = totalDays / resolvedDisputes.length;
-    }
-    console.log("\nNumber of Open Disputes: ".concat(disputesOpen));
-    console.log("Number of Disputes Resolved in Last Month: ".concat(disputesResolvedLastMonth));
-    console.log("Mean Time to Resolution (Days): ".concat(meanTimeToResolution.toFixed(2)));
-    return {
-        open_disputes: disputesOpen,
-        resolved_last_month: disputesResolvedLastMonth,
-        mean_time_to_resolution: meanTimeToResolution.toFixed(2),
-    };
-}
+var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var lastMonth, lastMonthISOString, openDisputes, disputesOpen, resolvedDisputesLastMonth, disputesResolvedLastMonth, resolvedDisputes, meanTimeToResolution, totalDays;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                lastMonth = (0, date_fns_1.subMonths)(new Date(), 1);
+                lastMonthISOString = lastMonth.toISOString();
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, undefined, undefined, undefined, { dispute_status: 'Resolved' })];
+            case 1:
+                openDisputes = _a.sent();
+                disputesOpen = openDisputes.length;
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { dispute_status: 'Resolved' }, undefined, undefined, undefined, 'dispute_resolved_at_date >= ?', [lastMonthISOString])];
+            case 2:
+                resolvedDisputesLastMonth = _a.sent();
+                disputesResolvedLastMonth = resolvedDisputesLastMonth.length;
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { dispute_status: 'Resolved' })];
+            case 3:
+                resolvedDisputes = _a.sent();
+                meanTimeToResolution = 0;
+                if (resolvedDisputes.length > 0) {
+                    totalDays = resolvedDisputes.reduce(function (acc, dispute) {
+                        var createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
+                        var resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
+                        if (!createdDate || isNaN(createdDate.getTime()) || !resolvedDate || isNaN(resolvedDate.getTime())) {
+                            return acc;
+                        }
+                        if (resolvedDate < createdDate) {
+                            return acc;
+                        }
+                        return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
+                    }, 0);
+                    meanTimeToResolution = totalDays / resolvedDisputes.length;
+                }
+                console.log("\nNumber of Open Disputes: ".concat(disputesOpen));
+                console.log("Number of Disputes Resolved in Last Month: ".concat(disputesResolvedLastMonth));
+                console.log("Mean Time to Resolution (Days): ".concat(meanTimeToResolution.toFixed(2)));
+                return [2 /*return*/, {
+                        open_disputes: disputesOpen,
+                        resolved_last_month: disputesResolvedLastMonth,
+                        mean_time_to_resolution: meanTimeToResolution.toFixed(2),
+                    }];
+        }
+    });
+}); };
 // Function to analyze subscription performance
-function subscriptionPerformance() {
-    var sortedPayments = payments_df.data.sort(function (a, b) {
-        return a.payment_date.getTime() - b.payment_date.getTime();
-    });
-    var subscriptionItems = getMonthlyPayments().filter(function (payment) { return payment.item.includes("subscription"); });
-    var totalSubscriptions = subscriptionItems.length;
-    var subscriptionVolume = subscriptionItems.reduce(function (sum, sale) { return sum + sale.amount; }, 0);
-    var uniqueSubscribers = new Set(subscriptionItems.map(function (payment) { return payment.customer_email; })).size;
-    var subscriptionHistory = sortedPayments.filter(function (payment) { return payment.item.includes("subscription"); }).reduce(function (acc, payment) {
-        var paymentDate = (0, date_fns_1.format)(payment.payment_date, 'yyyy-MM');
-        if (!acc[paymentDate]) {
-            acc[paymentDate] = { total_subscriptions: 0, total_revenue: 0 };
+var subscriptionPerformance = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var lastMonth, lastMonthISOString, subscriptionDataLastMonth, totalSubscriptions, subscriptionVolume, uniqueSubscribers, today, startOfLastYear, subscriptionDataLastYear, subscriptionHistory;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                lastMonth = (0, date_fns_1.subMonths)(new Date(), 1);
+                lastMonthISOString = lastMonth.toISOString();
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.SUBSCRIPTIONS, { merchant_id: merchant_id }, undefined, 'dw_modified', undefined, 'dw_modified >= ? AND dw_modified < ?', [lastMonthISOString, new Date().toISOString()])];
+            case 1:
+                subscriptionDataLastMonth = _a.sent();
+                totalSubscriptions = subscriptionDataLastMonth.length;
+                subscriptionVolume = subscriptionDataLastMonth.reduce(function (sum, sale) { return sum + sale.amount_subscription; }, 0);
+                uniqueSubscribers = new Set(subscriptionDataLastMonth.map(function (payment) { return payment.dimcustomerid; })).size;
+                today = new Date();
+                startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.SUBSCRIPTIONS, { merchant_id: merchant_id }, undefined, 'dw_modified', undefined, 'dw_modified >= ? AND dw_modified < ?', [startOfLastYear, new Date().toISOString()])];
+            case 2:
+                subscriptionDataLastYear = _a.sent();
+                subscriptionHistory = subscriptionDataLastYear.reduce(function (acc, payment) {
+                    var paymentDate = (0, date_fns_1.format)(payment.dw_modified, 'yyyy-MM');
+                    if (!acc[paymentDate]) {
+                        acc[paymentDate] = { total_subscriptions: 0, total_revenue: 0 };
+                    }
+                    acc[paymentDate].total_subscriptions += 1;
+                    acc[paymentDate].total_revenue += payment.amount_subscription;
+                    return acc;
+                }, {});
+                console.log("\nTotal Subscriptions for Last Month: ".concat(totalSubscriptions));
+                console.log("Unique Subscribers for Last Month: ".concat(uniqueSubscribers));
+                console.log("Subscription History for Last Year:");
+                console.log(subscriptionHistory);
+                return [2 /*return*/, {
+                        total_subscriptions: totalSubscriptions,
+                        subscription_volume: subscriptionVolume,
+                        unique_subscribers: uniqueSubscribers,
+                        subscription_history: subscriptionHistory,
+                    }];
         }
-        acc[paymentDate].total_subscriptions += 1;
-        acc[paymentDate].total_revenue += payment.amount;
-        return acc;
-    }, {});
-    console.log("\nTotal Subscriptions: ".concat(totalSubscriptions));
-    console.log("Unique Subscribers: ".concat(uniqueSubscribers));
-    return {
-        total_subscriptions: totalSubscriptions,
-        subscription_volume: subscriptionVolume,
-        unique_subscribers: uniqueSubscribers,
-        subscription_history: subscriptionHistory,
-    };
-}
-// Function for product performance analysis
-function productPerformance() {
-    var productSalesHistory = payments_df.data.reduce(function (acc, payment) {
-        if (!acc[payment.item]) {
-            acc[payment.item] = { total_sales: 0, total_transactions: 0, average_sale_value: 0 };
-        }
-        acc[payment.item].total_sales += payment.amount;
-        acc[payment.item].total_transactions += 1;
-        return acc;
-    }, {});
-    // Calculate average sale value
-    Object.keys(productSalesHistory).forEach(function (item) {
-        var product = productSalesHistory[item];
-        product.average_sale_value = product.total_sales / product.total_transactions;
     });
-    console.log("\nProduct Performance Analysis:");
-    console.log(productSalesHistory);
-    return {
-        product_sales_history: productSalesHistory,
-    };
-}
+}); };
 // Function to analyze peak shopping times
-function peakShoppingTimes() {
-    var paymentHours = payments_df.data.map(function (payment) { return payment.payment_date.getHours(); });
-    var hourCounts = paymentHours.reduce(function (acc, hour) {
-        acc[hour] = (acc[hour] || 0) + 1;
-        return acc;
-    }, {});
-    console.log("Peak Shopping Times:", hourCounts);
-    return {
-        peak_shopping_times: hourCounts
-    };
+var peakShoppingTimes = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfLastYear, recentPayments, paymentHours, hourCounts, formattedHourCounts;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ?', [startOfLastYear])];
+            case 1:
+                recentPayments = _a.sent();
+                paymentHours = recentPayments.map(function (payment) { return payment.datetime_created_at_local.getHours(); });
+                hourCounts = paymentHours.reduce(function (acc, hour) {
+                    acc[hour] = (acc[hour] || 0) + 1;
+                    return acc;
+                }, {});
+                formattedHourCounts = Object.keys(hourCounts).reduce(function (acc, hour) {
+                    var hourNum = parseInt(hour);
+                    var timeRange = formatTimeRange(hourNum); // Convert to time range format
+                    acc[timeRange] = hourCounts[hour];
+                    return acc;
+                }, {});
+                console.log("Peak Shopping Times:", formattedHourCounts);
+                return [2 /*return*/, {
+                        peak_shopping_times: formattedHourCounts
+                    }];
+        }
+    });
+}); };
+// Function to format hour in time range format (e.g., "12 AM - 1 AM")
+function formatTimeRange(hour) {
+    var startHour = hour;
+    var endHour = (hour + 1) % 24;
+    var startPeriod = startHour >= 12 ? 'PM' : 'AM';
+    var endPeriod = endHour >= 12 ? 'PM' : 'AM';
+    var startFormatted = formatHourIn12HourFormat(startHour, startPeriod);
+    var endFormatted = formatHourIn12HourFormat(endHour, endPeriod);
+    return "".concat(startFormatted, " - ").concat(endFormatted);
 }
-// Function to analyze sales this month
-function salesAnalysisThisMonth() {
-    var currentDate = new Date();
-    var currentYear = currentDate.getFullYear();
-    var currentMonth = currentDate.getMonth();
-    var monthlySales = getMonthlyPayments();
-    var productRevenue = monthlySales.reduce(function (acc, payment) {
-        acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
-        return acc;
-    }, {});
-    var topProducts = Object.entries(productRevenue)
-        .sort(function (a, b) { return b[1] - a[1]; })
-        .slice(0, 5);
-    console.log("Top Products This Month:", topProducts, topProducts[0][0]);
-    return {
-        top_products_this_month: topProducts,
-        monthly_sales: monthlySales
-    };
+// Helper function to format hour in 12-hour format
+function formatHourIn12HourFormat(hour, period) {
+    var formattedHour = hour % 12 || 12; // Convert hour to 12-hour format
+    return "".concat(formattedHour, " ").concat(period);
 }
 // Function for customer segmentation
-function customerSegmentation() {
-    var today = new Date();
-    var startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    var endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    // Identify new customers (added this month)
-    var newCustomers = customers_df.data.filter(function (customer) {
-        return customer.added_on && customer.added_on >= startOfMonth && customer.added_on <= endOfMonth;
+var customerSegmentation = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfYear, startOfMonth, endOfMonth, startOfThreeMonthsAgo, endOfThreeMonthsAgo, rawQuery, params, activeCustomersData, newCustomers, returningCustomers, nonReturningCustomers, totalActiveCustomers, percentageReturning, percentageNew, percentageNonReturning;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfYear = new Date(today.getFullYear(), 0, 1);
+                startOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1), 1);
+                endOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1) + 1, 0);
+                startOfThreeMonthsAgo = new Date(today.getFullYear(), (today.getMonth() - 1) - 3, 1);
+                endOfThreeMonthsAgo = new Date(today.getFullYear(), (today.getMonth() - 1) - 2, 0);
+                rawQuery = "\n    WITH ranked_customers AS (\n        SELECT *, \n            ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n        FROM ??\n        WHERE ?? = ? AND datetime_created_at_local >= ?\n    )\n    SELECT *\n    FROM ranked_customers\n    WHERE row_num = 1\n";
+                params = [constants_1.TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfYear.toISOString()];
+                return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, params)];
+            case 1:
+                activeCustomersData = _a.sent();
+                newCustomers = activeCustomersData.filter(function (customer) {
+                    return customer.customer_created_at && customer.customer_created_at >= startOfMonth && customer.customer_created_at <= endOfMonth;
+                });
+                returningCustomers = activeCustomersData.filter(function (customer) {
+                    return customer.customer_created_at && customer.customer_created_at < startOfThreeMonthsAgo &&
+                        customer.datetime_created_at_local && customer.datetime_created_at_local >= startOfThreeMonthsAgo && customer.datetime_created_at_local <= endOfThreeMonthsAgo;
+                });
+                nonReturningCustomers = activeCustomersData.filter(function (customer) {
+                    return customer.customer_created_at && customer.customer_created_at < startOfThreeMonthsAgo &&
+                        (!customer.datetime_created_at_local || customer.datetime_created_at_local < startOfThreeMonthsAgo);
+                });
+                totalActiveCustomers = activeCustomersData.length;
+                percentageReturning = (returningCustomers.length / totalActiveCustomers) * 100;
+                percentageNew = (newCustomers.length / totalActiveCustomers) * 100;
+                percentageNonReturning = (nonReturningCustomers.length / totalActiveCustomers) * 100;
+                console.log("Customer Segmentation:", {
+                    new_customers: newCustomers.length,
+                    returning_customers: returningCustomers.length,
+                    non_returning_customers: nonReturningCustomers.length,
+                    total_customers: totalActiveCustomers,
+                    percentage_returning: percentageReturning,
+                    percentage_new: percentageNew,
+                    percentage_non_returning: percentageNonReturning
+                });
+                return [2 /*return*/, {
+                        new_customers: newCustomers.length,
+                        returning_customers: returningCustomers.length,
+                        non_returning_customers: nonReturningCustomers.length,
+                        total_customers: totalActiveCustomers,
+                        percentage_returning: percentageReturning,
+                        percentage_new: percentageNew,
+                        percentage_non_returning: percentageNonReturning
+                    }];
+        }
     });
-    // Identify returning customers (added before this month and made a transaction this month)
-    var returningCustomers = customers_df.data.filter(function (customer) {
-        return customer.added_on && customer.added_on < startOfMonth &&
-            customer.last_transaction && customer.last_transaction >= startOfMonth && customer.last_transaction <= endOfMonth;
+}); };
+// // Function to compare performance between current and last month
+var performanceComparison = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var currentDate, currentYear, currentMonth, lastMonth, lastYear, startOfCurrentMonth, endOfCurrentMonth, startOfLastMonth, endOfLastMonth, currentMonthSalesData, lastMonthSalesData, currentMonthSales, lastMonthSales;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                currentDate = new Date();
+                currentYear = currentDate.getFullYear();
+                currentMonth = currentDate.getMonth() - 1;
+                lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+                lastYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+                startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+                endOfCurrentMonth = new Date(currentYear, currentMonth + 1, 0);
+                startOfLastMonth = new Date(lastYear, lastMonth, 1);
+                endOfLastMonth = new Date(lastYear, lastMonth + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?', [startOfCurrentMonth.toISOString(), endOfCurrentMonth.toISOString(), true])];
+            case 1:
+                currentMonthSalesData = _a.sent();
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?', [startOfLastMonth.toISOString(), endOfLastMonth.toISOString(), true])];
+            case 2:
+                lastMonthSalesData = _a.sent();
+                currentMonthSales = currentMonthSalesData.reduce(function (sum, payment) { return sum + parseFloat(payment.amount_transaction); }, 0);
+                lastMonthSales = lastMonthSalesData.reduce(function (sum, payment) { return sum + parseFloat(payment.amount_transaction); }, 0);
+                console.log("Performance Comparison:", {
+                    current_month_sales: currentMonthSales,
+                    last_month_sales: lastMonthSales
+                });
+                return [2 /*return*/, {
+                        current_month_sales: currentMonthSales,
+                        last_month_sales: lastMonthSales
+                    }];
+        }
     });
-    // Identify non-returning customers (added before this month and made no transaction this month)
-    var nonReturningCustomers = customers_df.data.filter(function (customer) {
-        return customer.added_on && customer.added_on < startOfMonth &&
-            (!customer.last_transaction || customer.last_transaction < startOfMonth);
+}); };
+// // Function to calculate success rate
+var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfLastMonth, endOfLastMonth, transactions, totalPayments, totalVolume, successfulPayments, failedPayments, successRate;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ?', [startOfLastMonth.toISOString(), endOfLastMonth.toISOString()])];
+            case 1:
+                transactions = _a.sent();
+                totalPayments = transactions.length;
+                totalVolume = transactions.reduce(function (sum, payment) { return sum + parseFloat(payment.amount_transaction); }, 0);
+                successfulPayments = transactions.filter(function (payment) { return Boolean(payment.successful); }).length;
+                failedPayments = transactions.filter(function (payment) { return !Boolean(payment.successful); }).length;
+                successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
+                console.log("Success Rate Calculation:", {
+                    total_payments: totalPayments,
+                    successful_payments: successfulPayments,
+                    total_volume: totalVolume,
+                    failed_payments: failedPayments,
+                    success_rate: successRate
+                });
+                return [2 /*return*/, {
+                        total_payments: totalPayments,
+                        total_volume: totalVolume,
+                        successful_payments: successfulPayments,
+                        failed_payments: failedPayments,
+                        success_rate: successRate
+                    }];
+        }
     });
-    var totalCustomers = customers_df.data.length;
-    // Calculations
-    var percentageReturning = (returningCustomers.length / totalCustomers) * 100;
-    var percentageNew = (newCustomers.length / totalCustomers) * 100;
-    var percentageNonReturning = (nonReturningCustomers.length / totalCustomers) * 100;
-    console.log("Customer Segmentation:", {
-        new_customers: newCustomers.length,
-        returning_customers: returningCustomers.length,
-        non_returning_customers: nonReturningCustomers.length,
-        total_customers: totalCustomers,
-        percentage_returning: percentageReturning,
-        percentage_new: percentageNew,
-        percentage_non_returning: percentageNonReturning
-    });
-    return {
-        new_customers: newCustomers.length,
-        returning_customers: returningCustomers.length,
-        non_returning_customers: nonReturningCustomers.length,
-        total_customers: totalCustomers,
-    };
-}
-// Function to compare performance between current and last month
-function performanceComparison() {
-    var currentDate = new Date();
-    var currentYear = currentDate.getFullYear();
-    var currentMonth = currentDate.getMonth();
-    var lastMonth = currentMonth === 0 ? 11 : currentMonth - 1; // December if current is January
-    var lastYear = currentMonth === 0 ? currentYear - 1 : currentYear; // Previous year if current is January
-    var currentMonthSales = payments_df.data
-        .filter(function (payment) {
-        var paymentDate = new Date(payment.payment_date);
-        return paymentDate.getFullYear() === currentYear && paymentDate.getMonth() === currentMonth;
-    })
-        .reduce(function (sum, payment) { return sum + payment.amount; }, 0);
-    var lastMonthSales = payments_df.data
-        .filter(function (payment) {
-        var paymentDate = new Date(payment.payment_date);
-        return paymentDate.getFullYear() === lastYear && paymentDate.getMonth() === lastMonth;
-    })
-        .reduce(function (sum, payment) { return sum + payment.amount; }, 0);
-    console.log("Performance Comparison:", {
-        current_month_sales: currentMonthSales,
-        last_month_sales: lastMonthSales
-    });
-    return {
-        current_month_sales: currentMonthSales,
-        last_month_sales: lastMonthSales
-    };
-}
-// Function to calculate success rate
-function calculateSuccessRate() {
-    var monthlySales = getMonthlyPayments();
-    var totalPayments = monthlySales.length;
-    var totalVolume = monthlySales.reduce(function (sum, sale) { return sum + sale.amount; }, 0);
-    var successfulPayments = monthlySales.filter(function (payment) { return payment.status === 'Success'; }).length;
-    var failedPayments = monthlySales.filter(function (payment) { return payment.status === 'Failure'; }).length;
-    var successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
-    console.log("Success Rate Calculation:", {
-        total_payments: totalPayments,
-        successful_payments: successfulPayments,
-        total_volume: totalVolume,
-        failed_payments: failedPayments,
-        success_rate: successRate
-    });
-    return {
-        total_payments: totalPayments,
-        total_volume: totalVolume,
-        successful_payments: successfulPayments,
-        failed_payments: failedPayments,
-        success_rate: successRate
-    };
-}
+}); };
+// // Function to analyze sales this month
+// function salesAnalysisThisMonth() {
+//     const currentDate = new Date();
+//     const currentYear = currentDate.getFullYear();
+//     const currentMonth = currentDate.getMonth();
+//     const monthlySales = getMonthlyPayments();
+//     const productRevenue = monthlySales.reduce((acc, payment) => {
+//         acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
+//         return acc;
+//     }, {} as Record<string, number>);
+//     const topProducts = Object.entries(productRevenue)
+//         .sort((a, b) => b[1] - a[1])
+//         .slice(0, 5);
+//     console.log("Top Products This Month:", topProducts, topProducts[0][0]);
+//     return {
+//         top_products_this_month: topProducts,
+//         monthly_sales: monthlySales
+//     };
+// }
+// // Function for product performance analysis
+// function productPerformance() {
+//     const productSalesHistory = payments_df.data.reduce((acc, payment) => {
+//         if (!acc[payment.item]) {
+//             acc[payment.item] = { total_sales: 0, total_transactions: 0, average_sale_value: 0 };
+//         }
+//         acc[payment.item].total_sales += payment.amount;
+//         acc[payment.item].total_transactions += 1;
+//         return acc;
+//     }, {});
+//     // Calculate average sale value
+//     Object.keys(productSalesHistory).forEach(item => {
+//         const product = productSalesHistory[item];
+//         product.average_sale_value = product.total_sales / product.total_transactions;
+//     });
+//     console.log("\nProduct Performance Analysis:");
+//     console.log(productSalesHistory);
+//     return {
+//         product_sales_history: productSalesHistory,
+//     };
+// }
 function saveChartImage(chart, fileName) {
     return __awaiter(this, void 0, void 0, function () {
         var imageUrl, response, buffer;
@@ -518,7 +418,7 @@ function saveChartImage(chart, fileName) {
                     return [4 /*yield*/, response.arrayBuffer()];
                 case 3:
                     buffer = _a.sent();
-                    (0, fs_2.writeFileSync)(path.join(__dirname, fileName), Buffer.from(buffer));
+                    (0, fs_1.writeFileSync)(path.join(__dirname, fileName), Buffer.from(buffer));
                     return [2 /*return*/];
             }
         });
@@ -859,7 +759,7 @@ function plotPeakShoppingTimes(peakTimes) {
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    hours = Object.keys(peakTimes).map(Number);
+                    hours = Object.keys(peakTimes).map(String);
                     counts = hours.map(function (hour) { return peakTimes[hour]; });
                     chart = new QuickChart();
                     chart.setConfig({
@@ -1065,67 +965,73 @@ function generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr) {
         });
     });
 }
-function loadData() {
-    var _this = this;
-    return Promise.all([
-        loadPaymentsData(),
-        loadCustomersData(),
-        loadDisputesData()
-    ])
-        .then(function () { return __awaiter(_this, void 0, void 0, function () {
-        var sr, cgr, da, sp, pp, psp, satm, rst, csg, pc, result;
+function main() {
+    return __awaiter(this, void 0, void 0, function () {
+        var sr, cgr, da, sp, rst, csg, pc, psp, error_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    sr = calculateSuccessRate();
-                    cgr = customerGrowthAndRetention();
-                    da = disputeAnalysis();
-                    sp = subscriptionPerformance();
-                    pp = productPerformance();
-                    psp = peakShoppingTimes();
-                    satm = salesAnalysisThisMonth();
-                    rst = revenueAndSalesTrends();
-                    csg = customerSegmentation();
-                    pc = performanceComparison();
-                    return [4 /*yield*/, plotCustomerSegmentationPie(csg)];
+                    _a.trys.push([0, 16, , 17]);
+                    return [4 /*yield*/, calculateSuccessRate()];
                 case 1:
+                    sr = _a.sent();
+                    return [4 /*yield*/, customerGrowthAndRetention()];
+                case 2:
+                    cgr = _a.sent();
+                    return [4 /*yield*/, disputeAnalysis()];
+                case 3:
+                    da = _a.sent();
+                    return [4 /*yield*/, subscriptionPerformance()];
+                case 4:
+                    sp = _a.sent();
+                    return [4 /*yield*/, revenueAndSalesTrends()];
+                case 5:
+                    rst = _a.sent();
+                    return [4 /*yield*/, customerSegmentation()];
+                case 6:
+                    csg = _a.sent();
+                    return [4 /*yield*/, performanceComparison()];
+                case 7:
+                    pc = _a.sent();
+                    return [4 /*yield*/, peakShoppingTimes()
+                        // const satm = await salesAnalysisThisMonth();
+                        // const pp = await productPerformance();
+                    ];
+                case 8:
+                    psp = _a.sent();
+                    // const satm = await salesAnalysisThisMonth();
+                    // const pp = await productPerformance();
+                    return [4 /*yield*/, plotCustomerSegmentationPie(csg)];
+                case 9:
+                    // const satm = await salesAnalysisThisMonth();
+                    // const pp = await productPerformance();
                     _a.sent();
                     return [4 /*yield*/, plotCustomerGrowth(cgr.customers_gained_each_month)];
-                case 2:
+                case 10:
                     _a.sent();
                     return [4 /*yield*/, plotRevenueAndSales(rst.revenue_trends)];
-                case 3:
-                    _a.sent();
-                    return [4 /*yield*/, plotRevenue(rst.revenue_trends)];
-                case 4:
-                    _a.sent();
-                    return [4 /*yield*/, plotTransactions(rst.revenue_trends)];
-                case 5:
-                    _a.sent();
-                    return [4 /*yield*/, plotSubscriptionPerformance(sp.subscription_history)];
-                case 6:
-                    _a.sent();
-                    return [4 /*yield*/, plotProductPerformance(pp.product_sales_history)];
-                case 7:
-                    _a.sent();
-                    return [4 /*yield*/, plotPeakShoppingTimes(psp.peak_shopping_times)];
-                case 8:
-                    _a.sent();
-                    return [4 /*yield*/, plotTopProducts(satm.top_products_this_month)];
-                case 9:
-                    _a.sent();
-                    return [4 /*yield*/, generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr)];
-                case 10:
-                    result = _a.sent();
-                    return [4 /*yield*/, createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result))];
                 case 11:
                     _a.sent();
-                    return [2 /*return*/];
+                    return [4 /*yield*/, plotRevenue(rst.revenue_trends)];
+                case 12:
+                    _a.sent();
+                    return [4 /*yield*/, plotTransactions(rst.revenue_trends)];
+                case 13:
+                    _a.sent();
+                    return [4 /*yield*/, plotSubscriptionPerformance(sp.subscription_history)];
+                case 14:
+                    _a.sent();
+                    return [4 /*yield*/, plotPeakShoppingTimes(psp.peak_shopping_times)];
+                case 15:
+                    _a.sent();
+                    return [3 /*break*/, 17];
+                case 16:
+                    error_3 = _a.sent();
+                    console.error("Error in analysis functions:", error_3);
+                    return [3 /*break*/, 17];
+                case 17: return [2 /*return*/];
             }
         });
-    }); })
-        .catch(function (error) {
-        console.error("Error loading data:", error);
     });
 }
-loadData();
+main();

@@ -6,286 +6,41 @@ const Handlebars = require('handlebars');
 const pdf = require('html-pdf-node');
 
 
-import { faker } from '@faker-js/faker';
-import { createReadStream, writeFile } from 'fs';
-import { PDFDocument, rgb } from 'pdf-lib';
 import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } from 'date-fns';
 import * as fs from 'fs';
 import { writeFileSync } from 'fs';
 import axios from 'axios';
-import { height, width } from 'pdfkit/js/page';
+import { TABLES } from './constants';
+import { databaseRepo } from './db_connection';
+import { Customer, Dispute, Subscription } from './types';
 
 
-// Constants
-const NUM_CUSTOMERS = 300;
-const NUM_PAYMENTS = 5000;
-const ITEMS: [string, number][] = [
-    ["item #1 from storefront", 5000],
-    ["item #2 from storefront", 40000],
-    ["item #3 from storefront", 3000],
-    ["service", 6000],
-    ["physical goods", 40000]
-];
-
-const SUBS: [string, number][] = [
-    ["subscription item #1 (monthly)", 7000],
-    ["subscription item #2 (monthly)", 30000],
-];
-const CHANNELS = ["Card", "POS", "Bank", "USSD", "Direct Debit"];
-const CHURN_RATE = 0.2;  // 20% churn rate
-const DISPUTE_STATUS = ["Open", "Resolved"];
-const GEOGRAPHIES = ["North America", "Europe", "Asia", "South America"];
-const PAYMENT_STATUSES = ["Success", "Failed", "Reversed", "Abandoned", "Queued"];
-
-// Customer interface
-interface Customer {
-    name: string;
-    email: string;
-    phone: string;
-    added_on: Date;
-    last_transaction: Date | null;
-    active: boolean;
-}
-
-// Payments and disputes
-interface Payment {
-    customer_email: string;
-    payment_date: Date;
-    amount: number;
-    channel: string;
-    item: string;
-    geography: string;
-    status?: string;
-}
-
-interface Dispute {
-    customer_email: string;
-    date_created: Date;
-    date_resolved?: Date | null;
-    status: string;
-}
-
-// Customers
-const customers: Customer[] = [];
-for (let i = 0; i < NUM_CUSTOMERS; i++) {
-    const addedOnDate = faker.date.past({ years: 3 });
-    customers.push({
-        name: faker.person.fullName(),
-        email: faker.internet.email(),
-        phone: faker.phone.number(),
-        added_on: addedOnDate,
-        last_transaction: null,
-        active: true
-    });
-}
-
-// Payments and disputes
-const payments: Payment[] = [];
-const disputes: Dispute[] = [];
-customers.forEach(customer => {
-    const customerAddedOn = customer.added_on;
-
-    // Simulate subscriptions
-    if (Math.random() > 0.5) {
-        if (Math.random() > CHURN_RATE) {
-            const subscription = SUBS[Math.floor(Math.random() * SUBS.length)];
-            const subscriptionStartDate = new Date(customerAddedOn.getTime() + Math.floor(Math.random() * 31) * 24 * 60 * 60 * 1000);
-            for (let month = 0; month < 12; month++) {  // 1 year of monthly payments
-                const paymentDate = new Date(subscriptionStartDate.getTime() + month * 30 * 24 * 60 * 60 * 1000);
-                if (paymentDate <= new Date()) {
-                    payments.push({
-                        customer_email: customer.email,
-                        payment_date: paymentDate,
-                        amount: subscription[1],
-                        channel: CHANNELS[Math.floor(Math.random() * CHANNELS.length)],
-                        item: subscription[0],
-                        geography: GEOGRAPHIES[Math.floor(Math.random() * GEOGRAPHIES.length)]
-                    });
-                    customer.last_transaction = paymentDate;
-                }
-            }
-        }
-    }
-
-    // Simulate one-off purchases for active customers
-    const numOneOffPurchases = Math.floor(Math.random() * 10) + 1;
-    for (let j = 0; j < numOneOffPurchases; j++) {
-        const item = ITEMS[Math.floor(Math.random() * ITEMS.length)];
-        const purchaseDate = faker.date.between({ from: customerAddedOn, to: new Date() });
-        if (purchaseDate <= new Date()) {
-            payments.push({
-                customer_email: customer.email,
-                payment_date: purchaseDate,
-                amount: item[1],
-                channel: CHANNELS[Math.floor(Math.random() * CHANNELS.length)],
-                item: item[0],
-                geography: GEOGRAPHIES[Math.floor(Math.random() * GEOGRAPHIES.length)],
-                status: PAYMENT_STATUSES[Math.floor(Math.random() * PAYMENT_STATUSES.length)]
-            });
-            customer.last_transaction = purchaseDate;
-
-            // Randomly create disputes for some transactions
-            if (Math.random() < 0.1 && Math.random() < 0.1) {  // 1% chance of dispute
-                const disputeCreated = purchaseDate;
-                const disputeResolved = Math.random() < 0.8 ? new Date(disputeCreated.getTime() + Math.floor(Math.random() * (30 - 5 + 1) + 5) * 24 * 60 * 60 * 1000) : null;
-                disputes.push({
-                    customer_email: customer.email,
-                    date_created: disputeCreated,
-                    date_resolved: disputeResolved,
-                    status: disputeResolved ? 'Resolved' : 'Open'
-                });
-            }
-        }
-    }
-});
-
-// Convert payments and customers data to CSV format
-const paymentsCsv = payments.map(payment => `${payment.customer_email},${payment.payment_date.toISOString()},${payment.amount},${payment.channel},${payment.item},${payment.geography},${payment.status || ''}`).join('\n');
-const customersCsv = customers.map(customer => `${customer.name},${customer.email},${customer.phone},${customer.added_on.toISOString()},${customer.last_transaction ? customer.last_transaction.toISOString() : ''},${customer.active}`).join('\n');
-const disputesCsv = disputes.map(dispute => `${dispute.customer_email},${dispute.date_created.toISOString()},${dispute.date_resolved ? dispute.date_resolved.toISOString() : ''},${dispute.status}`).join('\n');
-
-// Save to CSV files
-fs.writeFileSync('fake_customers_data.csv', customersCsv);
-fs.writeFileSync('fake_disputes_data.csv', disputesCsv);
-fs.writeFileSync('fake_payments_data.csv', paymentsCsv);
-
-console.log("Customers:");
-console.log(customers.slice(0, 5));
-console.log("\nPayments:");
-console.log(payments.slice(0, 5));
-console.log("\nDisputes:");
-console.log(disputes.slice(0, 5));
-
-function createDataFrame<T>(data: T[]): { data: T[]; head: (n: number) => T[] } {
-    return {
-        data,
-        head(n: number) {
-            return this.data.slice(0, n);
-        },
-    };
-}
 
 
-function addDataToDataFrame<T>(dataFrame: { data: T[] }, newData: T) {
-    dataFrame.data.push(newData);
-}
+const merchant_id = 100043;
 
-// Read data from csvt
-const payments_df = createDataFrame<Payment>([]);
-const customers_df = createDataFrame<Customer>([]);
-const disputes_df = createDataFrame<Dispute>([]);
-
-const customersHeaders = ['name', 'email', 'phone', 'added_on', 'last_transaction', 'active'];
-const paymentsHeaders = [
-    'customer_email',
-    'payment_date',
-    'amount',
-    'channel',
-    'item',
-    'geography',
-    'status'
-];
-
-const disputesHeaders = [
-    'customer_email',
-    'date_created',
-    'date_resolved',
-    'status'
-];
-
-function loadPaymentsData(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        createReadStream('fake_payments_data.csv')
-            .pipe(csvParser({ headers: paymentsHeaders }))
-            .on('data', (row) => {
-                addDataToDataFrame(payments_df, {
-                    customer_email: row.customer_email,
-                    payment_date: new Date(row.payment_date),
-                    amount: parseFloat(row.amount),
-                    channel: row.channel,
-                    item: row.item,
-                    geography: row.geography,
-                    status: row.status || undefined
-                });
-            })
-            .on('end', () => {
-                console.log("Payments data loaded.");
-                resolve();
-            })
-            .on('error', reject);
-    });
-}
-
-function loadCustomersData(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        createReadStream('fake_customers_data.csv')
-            .pipe(csvParser({ headers: customersHeaders }))
-            .on('data', (row) => {
-                addDataToDataFrame(customers_df, {
-                    name: row.name,
-                    email: row.email,
-                    phone: row.phone,
-                    added_on: new Date(row.added_on),
-                    last_transaction: row.last_transaction ? new Date(row.last_transaction) : null,
-                    active: row.active === 'true'
-                });
-            })
-            .on('end', () => {
-                console.log("Customers data loaded.");
-                resolve();
-            })
-            .on('error', reject);
-    });
-}
-
-function loadDisputesData(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        createReadStream('fake_disputes_data.csv')
-            .pipe(csvParser({ headers: disputesHeaders }))
-            .on('data', (row) => {
-                addDataToDataFrame(disputes_df, {
-                    customer_email: row.customer_email,
-                    date_created: new Date(row.date_created),
-                    date_resolved: row.date_resolved ? new Date(row.date_resolved) : null,
-                    status: row.status
-                });
-            })
-            .on('end', () => {
-                console.log("Disputes data loaded.");
-                resolve();
-            })
-            .on('error', reject);
-    });
-}
-
-function getMonthlyPayments(): Payment[] {
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth();
-
-    const monthlySales = payments_df.data.filter(payment => {
-        const paymentDate = new Date(payment.payment_date);
-        return paymentDate.getFullYear() === currentYear && paymentDate.getMonth() === currentMonth;
-    });
-
-    return monthlySales;
-}
 
 // Function to analyze revenue and sales trends over the past year
-function revenueAndSalesTrends() {
-    const lastYear = subYears(new Date(), 1);
-
-    const sortedPayments = payments_df.data.sort((a, b) =>
-        a.payment_date.getTime() - b.payment_date.getTime()
+const revenueAndSalesTrends = async () => {
+    const today = new Date();
+    const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+    const recentPayments = await databaseRepo.getWhere<Customer>(
+        TABLES.CUSTOMERS,
+        { merchant_id: merchant_id },
+        undefined,
+        'datetime_created_at_local',
+        undefined,
+        'datetime_created_at_local >= ? AND successful = ?',
+        [startOfLastYear, true]
     );
-    const recentPayments = sortedPayments.filter(payment => payment.payment_date >= lastYear);
+
 
     const revenueTrends = recentPayments.reduce((acc, payment) => {
-        const paymentDate = format(payment.payment_date, 'yyyy-MM');
+        const paymentDate = format(payment.datetime_created_at_local, 'yyyy-MM');
         if (!acc[paymentDate]) {
             acc[paymentDate] = { total_revenue: 0, total_transactions: 0 };
         }
-        acc[paymentDate].total_revenue += payment.amount;
+        acc[paymentDate].total_revenue += parseFloat(payment.amount_transaction);
         acc[paymentDate].total_transactions += 1;
         return acc;
     }, {});
@@ -299,14 +54,29 @@ function revenueAndSalesTrends() {
 }
 
 // Function to analyze customer growth and retention rates
-function customerGrowthAndRetention() {
-    const oneYearAgo = subYears(new Date(), 1);
-    const sixMonthsAgo = subDays(new Date(), 180);
-    const sortedCustomers = customers_df.data.sort((a, b) =>
-        a.added_on.getTime() - b.added_on.getTime()
-    );
-    const customerGrowth = sortedCustomers.reduce((acc, customer) => {
-        const addedOnMonth = format(customer.added_on, 'yyyy-MM');
+const customerGrowthAndRetention = async () => {
+    const today = new Date();
+    const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+    const startOfSixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+
+    const rawQuery = `
+        WITH ranked_customers AS (
+            SELECT *, 
+                ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num
+            FROM ??
+            WHERE ?? = ? AND customer_created_at >= ?
+        )
+        SELECT *
+        FROM ranked_customers
+        WHERE row_num = 1
+    `;
+    const params = [TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfLastYear.toISOString()];
+
+    // Fetch the most recent customers created within the last year 
+    const recentCustomers = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
+
+    const customerGrowth = recentCustomers.reduce((acc, customer) => {
+        const addedOnMonth = format(customer.customer_created_at, 'yyyy-MM');
         if (!acc[addedOnMonth]) {
             acc[addedOnMonth] = 0;
         }
@@ -314,12 +84,10 @@ function customerGrowthAndRetention() {
         return acc;
     }, {});
 
+    const newCustomers = recentCustomers.length;
+    const endCustomers = recentCustomers.filter(customer => customer.customer_created_at >= startOfSixMonthsAgo).length;
 
-    const startCustomers = customers_df.data.filter(customer => customer.added_on <= oneYearAgo).length;
-    const newCustomers = customers_df.data.filter(customer => customer.added_on >= oneYearAgo).length;
-    const endCustomers = customers_df.data.filter(customer => customer.last_transaction >= sixMonthsAgo).length;
-
-    const retentionRate = startCustomers > 0 ? ((endCustomers - newCustomers) / startCustomers) * 100 : 0;
+    const retentionRate = newCustomers > 0 ? ((endCustomers) / newCustomers) * 100 : 0;
 
     console.log("\nCustomer Growth (New Customers per Month):");
     console.log(customerGrowth);
@@ -333,32 +101,57 @@ function customerGrowthAndRetention() {
 
 
 // Function to analyze disputes
-function disputeAnalysis() {
-    const disputesOpen = disputes_df.data.filter(dispute => dispute.status === "Open").length;
-    const disputesResolvedLastMonth = disputes_df.data.filter(dispute =>
-        dispute.status === "Resolved" &&
-        dispute.date_created >= subMonths(new Date(), 1)
-    ).length;
+const disputeAnalysis = async () => {
 
-    const resolvedDisputes = disputes_df.data.filter(dispute => dispute.status === "Resolved");
+    const lastMonth = subMonths(new Date(), 1);
+    const lastMonthISOString = lastMonth.toISOString();
 
+    const openDisputes = await databaseRepo.getWhere<Dispute>(
+        TABLES.DISPUTES,
+        undefined,
+        undefined,
+        undefined,
+        { dispute_status: 'Resolved' }
+    );
+    const disputesOpen = openDisputes.length;
+
+
+    const resolvedDisputesLastMonth = await databaseRepo.getWhere<Dispute>(
+        TABLES.DISPUTES,
+        { dispute_status: 'Resolved' },
+        undefined,
+        undefined,
+        undefined,
+        'dispute_resolved_at_date >= ?',
+        [lastMonthISOString]
+    );
+    const disputesResolvedLastMonth = resolvedDisputesLastMonth.length;
+
+
+    const resolvedDisputes = await databaseRepo.getWhere<Dispute>(
+        TABLES.DISPUTES,
+        { dispute_status: 'Resolved' }
+    );
+
+    // Calculate Mean Time to Resolution
     let meanTimeToResolution = 0;
     if (resolvedDisputes.length > 0) {
         const totalDays = resolvedDisputes.reduce((acc, dispute) => {
-            const createdDate = new Date(dispute.date_created);
-            const resolvedDate = new Date(dispute.date_resolved);
+            const createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
+            const resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
 
-
-            if (!isNaN(createdDate.getTime()) && !isNaN(resolvedDate.getTime())) {
-                return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
-            } else {
+            if (!createdDate || isNaN(createdDate.getTime()) || !resolvedDate || isNaN(resolvedDate.getTime())) {
                 return acc;
             }
+
+            if (resolvedDate < createdDate) {
+                return acc;
+            }
+            return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
         }, 0);
 
         meanTimeToResolution = totalDays / resolvedDisputes.length;
     }
-
     console.log(`\nNumber of Open Disputes: ${disputesOpen}`);
     console.log(`Number of Disputes Resolved in Last Month: ${disputesResolvedLastMonth}`);
     console.log(`Mean Time to Resolution (Days): ${meanTimeToResolution.toFixed(2)}`);
@@ -372,30 +165,53 @@ function disputeAnalysis() {
 
 
 // Function to analyze subscription performance
-function subscriptionPerformance() {
+const subscriptionPerformance = async () => {
+    const lastMonth = subMonths(new Date(), 1);
+    const lastMonthISOString = lastMonth.toISOString();
 
-    const sortedPayments = payments_df.data.sort((a, b) =>
-        a.payment_date.getTime() - b.payment_date.getTime()
+
+    const subscriptionDataLastMonth = await databaseRepo.getWhere<Subscription>(
+        TABLES.SUBSCRIPTIONS,
+        { merchant_id: merchant_id },
+        undefined,
+        'dw_modified',
+        undefined,
+        'dw_modified >= ? AND dw_modified < ?',
+        [lastMonthISOString, new Date().toISOString()]
     );
-    const subscriptionItems = getMonthlyPayments().filter(payment => payment.item.includes("subscription"));
 
-    const totalSubscriptions = subscriptionItems.length;
-    const subscriptionVolume = subscriptionItems.reduce((sum, sale) => sum + sale.amount, 0);
-    const uniqueSubscribers = new Set(subscriptionItems.map(payment => payment.customer_email)).size;
+    const totalSubscriptions = subscriptionDataLastMonth.length;
+    const subscriptionVolume = subscriptionDataLastMonth.reduce((sum, sale) => sum + sale.amount_subscription, 0);
+    const uniqueSubscribers = new Set(subscriptionDataLastMonth.map(payment => payment.dimcustomerid)).size;
 
-    const subscriptionHistory = sortedPayments.filter(payment => payment.item.includes("subscription")).reduce((acc, payment) => {
 
-        const paymentDate = format(payment.payment_date, 'yyyy-MM');
+    const today = new Date();
+    const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+
+    const subscriptionDataLastYear = await databaseRepo.getWhere<Subscription>(
+        TABLES.SUBSCRIPTIONS,
+        { merchant_id: merchant_id },
+        undefined,
+        'dw_modified',
+        undefined,
+        'dw_modified >= ? AND dw_modified < ?',
+        [startOfLastYear, new Date().toISOString()]
+    );
+
+    const subscriptionHistory = subscriptionDataLastYear.reduce((acc, payment) => {
+        const paymentDate = format(payment.dw_modified, 'yyyy-MM');
         if (!acc[paymentDate]) {
             acc[paymentDate] = { total_subscriptions: 0, total_revenue: 0 };
         }
         acc[paymentDate].total_subscriptions += 1;
-        acc[paymentDate].total_revenue += payment.amount;
+        acc[paymentDate].total_revenue += payment.amount_subscription;
         return acc;
     }, {});
 
-    console.log(`\nTotal Subscriptions: ${totalSubscriptions}`);
-    console.log(`Unique Subscribers: ${uniqueSubscribers}`);
+    console.log(`\nTotal Subscriptions for Last Month: ${totalSubscriptions}`);
+    console.log(`Unique Subscribers for Last Month: ${uniqueSubscribers}`);
+    console.log(`Subscription History for Last Year:`);
+    console.log(subscriptionHistory);
 
     return {
         total_subscriptions: totalSubscriptions,
@@ -405,109 +221,114 @@ function subscriptionPerformance() {
     };
 }
 
-// Function for product performance analysis
-function productPerformance() {
-    const productSalesHistory = payments_df.data.reduce((acc, payment) => {
-        if (!acc[payment.item]) {
-            acc[payment.item] = { total_sales: 0, total_transactions: 0, average_sale_value: 0 };
-        }
-        acc[payment.item].total_sales += payment.amount;
-        acc[payment.item].total_transactions += 1;
-        return acc;
-    }, {});
-
-    // Calculate average sale value
-    Object.keys(productSalesHistory).forEach(item => {
-        const product = productSalesHistory[item];
-        product.average_sale_value = product.total_sales / product.total_transactions;
-    });
-
-    console.log("\nProduct Performance Analysis:");
-    console.log(productSalesHistory);
-
-    return {
-        product_sales_history: productSalesHistory,
-    };
-}
-
 
 // Function to analyze peak shopping times
-function peakShoppingTimes() {
-    const paymentHours = payments_df.data.map(payment => payment.payment_date.getHours());
+const peakShoppingTimes = async () => {
+    const today = new Date();
+    const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+    const recentPayments = await databaseRepo.getWhere<Customer>(
+        TABLES.CUSTOMERS,
+        { merchant_id: merchant_id },
+        undefined,
+        'datetime_created_at_local',
+        undefined,
+        'datetime_created_at_local >= ?',
+        [startOfLastYear]
+    );
+
+    const paymentHours = recentPayments.map(payment => payment.datetime_created_at_local.getHours());
     const hourCounts = paymentHours.reduce((acc, hour) => {
         acc[hour] = (acc[hour] || 0) + 1;
         return acc;
     }, {} as Record<number, number>);
 
-    console.log("Peak Shopping Times:", hourCounts);
-
-    return {
-        peak_shopping_times: hourCounts
-    };
-}
-
-// Function to analyze sales this month
-function salesAnalysisThisMonth() {
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth();
-
-    const monthlySales = getMonthlyPayments();
-
-    const productRevenue = monthlySales.reduce((acc, payment) => {
-        acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
+    // Convert numeric hours to time range format (e.g., "12 AM - 1 AM")
+    const formattedHourCounts = Object.keys(hourCounts).reduce((acc, hour) => {
+        const hourNum = parseInt(hour);
+        const timeRange = formatTimeRange(hourNum);  // Convert to time range format
+        acc[timeRange] = hourCounts[hour];
         return acc;
     }, {} as Record<string, number>);
 
-
-    const topProducts = Object.entries(productRevenue)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-
-    console.log("Top Products This Month:", topProducts, topProducts[0][0]);
+    console.log("Peak Shopping Times:", formattedHourCounts);
 
     return {
-        top_products_this_month: topProducts,
-        monthly_sales: monthlySales
+        peak_shopping_times: formattedHourCounts
     };
+};
+
+// Function to format hour in time range format (e.g., "12 AM - 1 AM")
+function formatTimeRange(hour: number): string {
+    const startHour = hour;
+    const endHour = (hour + 1) % 24;
+
+    const startPeriod = startHour >= 12 ? 'PM' : 'AM';
+    const endPeriod = endHour >= 12 ? 'PM' : 'AM';
+
+    const startFormatted = formatHourIn12HourFormat(startHour, startPeriod);
+    const endFormatted = formatHourIn12HourFormat(endHour, endPeriod);
+
+    return `${startFormatted} - ${endFormatted}`;
+}
+
+// Helper function to format hour in 12-hour format
+function formatHourIn12HourFormat(hour: number, period: string): string {
+    const formattedHour = hour % 12 || 12;  // Convert hour to 12-hour format
+    return `${formattedHour} ${period}`;
 }
 
 
 // Function for customer segmentation
-function customerSegmentation() {
+const customerSegmentation = async () => {
     const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    const startOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1), 1); //remember to remove -1 to get for current month and not last month
+    const endOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1) + 1, 0); //remember to remove -1 to get for current month and not last month
+    const startOfThreeMonthsAgo = new Date(today.getFullYear(), (today.getMonth() - 1) - 3, 1); //remember to remove -1 to get for current month and not last month
+    const endOfThreeMonthsAgo = new Date(today.getFullYear(), (today.getMonth() - 1) - 2, 0); //remember to remove -1 to get for current month and not last month
 
-    // Identify new customers (added this month)
-    const newCustomers = customers_df.data.filter(customer =>
-        customer.added_on && customer.added_on >= startOfMonth && customer.added_on <= endOfMonth
+    const rawQuery = `
+    WITH ranked_customers AS (
+        SELECT *, 
+            ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num
+        FROM ??
+        WHERE ?? = ? AND datetime_created_at_local >= ?
+    )
+    SELECT *
+    FROM ranked_customers
+    WHERE row_num = 1
+`;
+    const params = [TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfYear.toISOString()];
+
+    // Fetch active customers within the year 
+    const activeCustomersData = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
+
+    const newCustomers = activeCustomersData.filter(customer =>
+        customer.customer_created_at && customer.customer_created_at >= startOfMonth && customer.customer_created_at <= endOfMonth
     );
 
-    // Identify returning customers (added before this month and made a transaction this month)
-    const returningCustomers = customers_df.data.filter(customer =>
-        customer.added_on && customer.added_on < startOfMonth &&
-        customer.last_transaction && customer.last_transaction >= startOfMonth && customer.last_transaction <= endOfMonth
+    const returningCustomers = activeCustomersData.filter(customer =>
+        customer.customer_created_at && customer.customer_created_at < startOfThreeMonthsAgo &&
+        customer.datetime_created_at_local && customer.datetime_created_at_local >= startOfThreeMonthsAgo && customer.datetime_created_at_local <= endOfThreeMonthsAgo
     );
 
-    // Identify non-returning customers (added before this month and made no transaction this month)
-    const nonReturningCustomers = customers_df.data.filter(customer =>
-        customer.added_on && customer.added_on < startOfMonth &&
-        (!customer.last_transaction || customer.last_transaction < startOfMonth)
+    const nonReturningCustomers = activeCustomersData.filter(customer =>
+        customer.customer_created_at && customer.customer_created_at < startOfThreeMonthsAgo &&
+        (!customer.datetime_created_at_local || customer.datetime_created_at_local < startOfThreeMonthsAgo)
     );
 
-    const totalCustomers = customers_df.data.length;
+    const totalActiveCustomers = activeCustomersData.length;
 
-    // Calculations
-    const percentageReturning = (returningCustomers.length / totalCustomers) * 100;
-    const percentageNew = (newCustomers.length / totalCustomers) * 100;
-    const percentageNonReturning = (nonReturningCustomers.length / totalCustomers) * 100;
+
+    const percentageReturning = (returningCustomers.length / totalActiveCustomers) * 100;
+    const percentageNew = (newCustomers.length / totalActiveCustomers) * 100;
+    const percentageNonReturning = (nonReturningCustomers.length / totalActiveCustomers) * 100;
 
     console.log("Customer Segmentation:", {
         new_customers: newCustomers.length,
         returning_customers: returningCustomers.length,
         non_returning_customers: nonReturningCustomers.length,
-        total_customers: totalCustomers,
+        total_customers: totalActiveCustomers,
         percentage_returning: percentageReturning,
         percentage_new: percentageNew,
         percentage_non_returning: percentageNonReturning
@@ -517,35 +338,53 @@ function customerSegmentation() {
         new_customers: newCustomers.length,
         returning_customers: returningCustomers.length,
         non_returning_customers: nonReturningCustomers.length,
-        total_customers: totalCustomers,
-  
-    }
-}
+        total_customers: totalActiveCustomers,
+        percentage_returning: percentageReturning,
+        percentage_new: percentageNew,
+        percentage_non_returning: percentageNonReturning
+    };
+};
 
-// Function to compare performance between current and last month
-function performanceComparison() {
+
+// // Function to compare performance between current and last month
+const performanceComparison = async () => {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth();
+    const currentMonth = currentDate.getMonth() -1; // rememeber to remove -1 to get for current month
 
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1; // December if current is January
-    const lastYear = currentMonth === 0 ? currentYear - 1 : currentYear; // Previous year if current is January
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1; 
+    const lastYear = currentMonth === 0 ? currentYear - 1 : currentYear; 
 
+    const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+    const endOfCurrentMonth = new Date(currentYear, currentMonth + 1, 0); 
 
-    const currentMonthSales = payments_df.data
-        .filter(payment => {
-            const paymentDate = new Date(payment.payment_date);
-            return paymentDate.getFullYear() === currentYear && paymentDate.getMonth() === currentMonth;
-        })
-        .reduce((sum, payment) => sum + payment.amount, 0);
+    const startOfLastMonth = new Date(lastYear, lastMonth, 1);
+    const endOfLastMonth = new Date(lastYear, lastMonth + 1, 0); 
 
+    const currentMonthSalesData = await databaseRepo.getWhere<Customer>(
+        TABLES.CUSTOMERS,
+        { merchant_id: merchant_id },
+        undefined,
+        'datetime_created_at_local',
+        undefined,
+        'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?',
+        [startOfCurrentMonth.toISOString(), endOfCurrentMonth.toISOString(), true]
+    );
 
-    const lastMonthSales = payments_df.data
-        .filter(payment => {
-            const paymentDate = new Date(payment.payment_date);
-            return paymentDate.getFullYear() === lastYear && paymentDate.getMonth() === lastMonth;
-        })
-        .reduce((sum, payment) => sum + payment.amount, 0);
+    const lastMonthSalesData = await databaseRepo.getWhere<Customer>(
+        TABLES.CUSTOMERS,
+        { merchant_id: merchant_id },
+        undefined,
+        'datetime_created_at_local',
+        undefined,
+        'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?',
+        [startOfLastMonth.toISOString(), endOfLastMonth.toISOString(), true]
+    );
+
+    
+    const currentMonthSales = currentMonthSalesData.reduce((sum, payment) => sum + parseFloat(payment.amount_transaction), 0);
+
+    const lastMonthSales = lastMonthSalesData.reduce((sum, payment) => sum + parseFloat(payment.amount_transaction), 0);
 
     console.log("Performance Comparison:", {
         current_month_sales: currentMonthSales,
@@ -556,19 +395,30 @@ function performanceComparison() {
         current_month_sales: currentMonthSales,
         last_month_sales: lastMonthSales
     };
-}
+};
 
 
-// Function to calculate success rate
-function calculateSuccessRate() {
+// // Function to calculate success rate
+const calculateSuccessRate = async () => {
+    const today = new Date();
+    const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
 
+    // Fetch transactions for last month
+    const transactions = await databaseRepo.getWhere<Customer>(
+        TABLES.CUSTOMERS,
+        { merchant_id: merchant_id },
+        undefined,
+        'datetime_created_at_local',
+        undefined,
+        'datetime_created_at_local >= ? AND datetime_created_at_local <= ?',
+        [startOfLastMonth.toISOString(), endOfLastMonth.toISOString()]
+    );
 
-    const monthlySales = getMonthlyPayments();
-
-    const totalPayments = monthlySales.length;
-    const totalVolume = monthlySales.reduce((sum, sale) => sum + sale.amount, 0);
-    const successfulPayments = monthlySales.filter(payment => payment.status === 'Success').length;
-    const failedPayments = monthlySales.filter(payment => payment.status === 'Failure').length;
+    const totalPayments = transactions.length;
+    const totalVolume = transactions.reduce((sum, payment) => sum + parseFloat(payment.amount_transaction), 0);
+    const successfulPayments = transactions.filter(payment => Boolean(payment.successful)).length;
+    const failedPayments = transactions.filter(payment => !Boolean(payment.successful)).length;
 
     const successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
 
@@ -587,8 +437,57 @@ function calculateSuccessRate() {
         failed_payments: failedPayments,
         success_rate: successRate
     };
-}
+};
 
+// // Function to analyze sales this month
+// function salesAnalysisThisMonth() {
+//     const currentDate = new Date();
+//     const currentYear = currentDate.getFullYear();
+//     const currentMonth = currentDate.getMonth();
+
+//     const monthlySales = getMonthlyPayments();
+
+//     const productRevenue = monthlySales.reduce((acc, payment) => {
+//         acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
+//         return acc;
+//     }, {} as Record<string, number>);
+
+
+//     const topProducts = Object.entries(productRevenue)
+//         .sort((a, b) => b[1] - a[1])
+//         .slice(0, 5);
+
+//     console.log("Top Products This Month:", topProducts, topProducts[0][0]);
+
+//     return {
+//         top_products_this_month: topProducts,
+//         monthly_sales: monthlySales
+//     };
+// }
+// // Function for product performance analysis
+// function productPerformance() {
+//     const productSalesHistory = payments_df.data.reduce((acc, payment) => {
+//         if (!acc[payment.item]) {
+//             acc[payment.item] = { total_sales: 0, total_transactions: 0, average_sale_value: 0 };
+//         }
+//         acc[payment.item].total_sales += payment.amount;
+//         acc[payment.item].total_transactions += 1;
+//         return acc;
+//     }, {});
+
+//     // Calculate average sale value
+//     Object.keys(productSalesHistory).forEach(item => {
+//         const product = productSalesHistory[item];
+//         product.average_sale_value = product.total_sales / product.total_transactions;
+//     });
+
+//     console.log("\nProduct Performance Analysis:");
+//     console.log(productSalesHistory);
+
+//     return {
+//         product_sales_history: productSalesHistory,
+//     };
+// }
 
 async function saveChartImage(chart: InstanceType<typeof QuickChart>, fileName: string) {
     const imageUrl = await chart.getShortUrl();
@@ -661,7 +560,6 @@ async function plotCustomerSegmentationPie(segmentationData: { new_customers: nu
 
     await saveChartImage(chart, 'customer_segmentation_pie.png');
 }
-
 
 
 async function plotRevenueAndSales(revenueTrends: Record<string, { total_revenue: number; total_transactions: number; }>) {
@@ -860,8 +758,8 @@ async function plotTopProducts(topProducts: [string, number][]) {
     await saveChartImage(chart, 'top_products_this_month.png');
 }
 
-async function plotPeakShoppingTimes(peakTimes: Record<number, number>) {
-    const hours = Object.keys(peakTimes).map(Number);
+async function plotPeakShoppingTimes(peakTimes: Record<string, number>) {
+    const hours = Object.keys(peakTimes).map(String);
     const counts = hours.map(hour => peakTimes[hour]);
 
     const chart = new QuickChart();
@@ -894,6 +792,7 @@ function getImageUrl(imgPath: string) {
     const imgSrc = `data:image/png;base64,${imgData}`;
     return imgSrc;
 }
+
 async function createPdfReport(sr: any, da: any, satm: any, sp: any, cgr: any, csg: any, result: any) {
     const templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
     const template = Handlebars.compile(templateHtml);
@@ -1074,39 +973,33 @@ async function generateReport(rst: any, cgr: any, da: any, sp: any, pp: any, psp
 }
 
 
-function loadData() {
-    return Promise.all([
-        loadPaymentsData(),
-        loadCustomersData(),
-        loadDisputesData()
-    ])
-        .then(async () => {
-            const sr = calculateSuccessRate();
-            const cgr = customerGrowthAndRetention();
-            const da = disputeAnalysis();
-            const sp = subscriptionPerformance();
-            const pp = productPerformance();
-            const psp = peakShoppingTimes()
-            const satm = salesAnalysisThisMonth();
-            const rst = revenueAndSalesTrends()
-            const csg = customerSegmentation()
-            const pc = performanceComparison()
-            await plotCustomerSegmentationPie(csg)
-            await plotCustomerGrowth(cgr.customers_gained_each_month);
-            await plotRevenueAndSales(rst.revenue_trends);
-            await plotRevenue(rst.revenue_trends);
-            await plotTransactions(rst.revenue_trends)
-            await plotSubscriptionPerformance(sp.subscription_history);
-            await plotProductPerformance(pp.product_sales_history);
-            await plotPeakShoppingTimes(psp.peak_shopping_times);
-            await plotTopProducts(satm.top_products_this_month);
-            const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-            await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
+async function main() {
+    try {
+        const sr = await calculateSuccessRate();
+        const cgr = await customerGrowthAndRetention();
+        const da = await disputeAnalysis();
+        const sp = await subscriptionPerformance();
+        const rst = await revenueAndSalesTrends()
+        const csg = await customerSegmentation()
+        const pc = await performanceComparison()
+        const psp = await peakShoppingTimes()
+        // const satm = await salesAnalysisThisMonth();
+        // const pp = await productPerformance();
 
-        })
-        .catch((error) => {
-            console.error("Error loading data:", error);
-        });
+        await plotCustomerSegmentationPie(csg)
+        await plotCustomerGrowth(cgr.customers_gained_each_month);
+        await plotRevenueAndSales(rst.revenue_trends);
+        await plotRevenue(rst.revenue_trends);
+        await plotTransactions(rst.revenue_trends)
+        await plotSubscriptionPerformance(sp.subscription_history);
+        await plotPeakShoppingTimes(psp.peak_shopping_times);
+        // await plotProductPerformance(pp.product_sales_history);
+        // await plotTopProducts(satm.top_products_this_month);
+        // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+        // await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
+    } catch (error) {
+        console.error("Error in analysis functions:", error);
+    }
 }
 
-loadData();
+main();

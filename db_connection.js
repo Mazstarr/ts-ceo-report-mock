@@ -115,19 +115,19 @@ exports.databaseRepo = {
      */
     getWhere: function (tableName, condition, distinctColumn, orderByColumn, excludeCondition, rawQuery, rawQueryParams) {
         return __awaiter(this, void 0, void 0, function () {
-            var results, query;
+            var query;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        if (!rawQuery) return [3 /*break*/, 2];
-                        return [4 /*yield*/, db.raw(rawQuery, rawQueryParams)];
-                    case 1:
-                        results = _a.sent();
-                        return [2 /*return*/, results.rows];
-                    case 2:
-                        query = db(tableName).where(condition);
+                        query = db(tableName);
+                        if (condition) {
+                            query = query.where(condition);
+                        }
                         if (excludeCondition) {
                             query = query.whereNot(excludeCondition);
+                        }
+                        if (rawQuery) {
+                            query = query.andWhereRaw(rawQuery, rawQueryParams);
                         }
                         if (distinctColumn && tableName !== constants_1.TABLES.CUSTOMERS) {
                             query = query.distinct(distinctColumn);
@@ -136,7 +136,32 @@ exports.databaseRepo = {
                             query = query.orderBy(orderByColumn, 'desc');
                         }
                         return [4 /*yield*/, query];
-                    case 3: return [2 /*return*/, _a.sent()];
+                    case 1: 
+                    // console.log('Executing SQL query:', query.toString());
+                    return [2 /*return*/, _a.sent()];
+                }
+            });
+        });
+    },
+    getCount: function (tableName, condition, excludeCondition) {
+        return __awaiter(this, void 0, void 0, function () {
+            var query, result;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        query = db(tableName);
+                        if (condition) {
+                            query = query.where(condition);
+                        }
+                        if (excludeCondition) {
+                            query = query.whereNot(excludeCondition);
+                        }
+                        query = query.count('* as count');
+                        console.log('Executing SQL count query:', query.toString());
+                        return [4 /*yield*/, query];
+                    case 1:
+                        result = _a.sent();
+                        return [2 /*return*/, result[0].count];
                 }
             });
         });
@@ -155,6 +180,26 @@ exports.databaseRepo = {
                 switch (_b.label) {
                     case 0: return [4 /*yield*/, (_a = db(tableName)).select.apply(_a, columns).where(condition)];
                     case 1: return [2 /*return*/, _b.sent()];
+                }
+            });
+        });
+    },
+    executeRawQuery: function (rawQuery, rawQueryParams) {
+        return __awaiter(this, void 0, void 0, function () {
+            var results, error_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 2, , 3]);
+                        return [4 /*yield*/, db.raw(rawQuery, rawQueryParams)];
+                    case 1:
+                        results = _a.sent();
+                        return [2 /*return*/, results.rows];
+                    case 2:
+                        error_1 = _a.sent();
+                        console.error('Error executing raw SQL query:', error_1);
+                        throw new Error('Failed to execute raw SQL query');
+                    case 3: return [2 /*return*/];
                 }
             });
         });

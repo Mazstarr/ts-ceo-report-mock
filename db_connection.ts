@@ -2,6 +2,7 @@ require('dotenv').config();
 // dbRepo.ts
 import knex from 'knex';
 import { TABLES } from './constants';
+import { Q } from '@faker-js/faker/dist/airline-WjISwexU';
 
 const db = knex({
     client: 'pg',
@@ -61,30 +62,62 @@ export const databaseRepo = {
         rawQuery?: string,  
         rawQueryParams?: any[]  
     ): Promise<T[]> {
-        if (rawQuery) {
-            const results = await db.raw(rawQuery, rawQueryParams);
-            return results.rows as T[];
-        }
+        let query;
     
-        let query = db<T>(tableName).where(condition);
+        query = db<T>(tableName);
+    
+        if (condition) {
+            query = query.where(condition);
+        }
     
         if (excludeCondition) {
             query = query.whereNot(excludeCondition);
         }
     
-       
+        if (rawQuery) {
+            query = query.andWhereRaw(rawQuery, rawQueryParams); 
+        }
+    
+
         if (distinctColumn && tableName !== TABLES.CUSTOMERS) {
             query = query.distinct(distinctColumn as string);
         }
     
-        
+       
         if (orderByColumn) {
             query = query.orderBy(orderByColumn as string, 'desc');
         }
-        return await query as T[];
-    }
-    ,
+        // console.log('Executing SQL query:', query.toString());
 
+        return await query as T[];
+    },
+    
+    async getCount<T>(
+        tableName: string,
+        condition?: Partial<T>,
+        excludeCondition?: Partial<T>
+    ): Promise<number> {
+        let query;
+    
+        query = db<T>(tableName);
+    
+        if (condition) {
+            query = query.where(condition);
+        }
+    
+
+        if (excludeCondition) {
+            query = query.whereNot(excludeCondition);
+        }
+
+        query = query.count('* as count');
+    
+        console.log('Executing SQL count query:', query.toString());
+        const result = await query;
+    
+        return result[0].count;
+    },
+    
 
     /**
      * Get specific columns from a table with optional conditions.
@@ -95,6 +128,18 @@ export const databaseRepo = {
     async getColumns<T>(tableName: string, columns: (keyof T)[], condition: Partial<T> = {}): Promise<Partial<T>[]> {
         return await db<T>(tableName).select(...(columns as string[])).where(condition) as Partial<T>[];
     },
+
+    async executeRawQuery<T>(rawQuery: string, rawQueryParams?: any[]): Promise<T[]> {
+        try {
+            // console.log('Executing raw SQL query:', rawQuery);  
+            const results = await db.raw(rawQuery, rawQueryParams);  
+            return results.rows as T[];  
+        } catch (error) {
+            console.error('Error executing raw SQL query:', error);  
+            throw new Error('Failed to execute raw SQL query');
+        }
+    },
+    
 
     /**
      * Get records with pagination from any table.

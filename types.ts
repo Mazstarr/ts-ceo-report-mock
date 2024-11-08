@@ -19,7 +19,7 @@ export interface Customer {
 export interface Dispute {
     reporting_date: Date;
     dispute_created_at_date: Date;
-    dispute_resolved_at_date: Date;
+    dispute_resolved_at_date: Date | null;
     reporting_week_startdate: Date;
     previous_week_startdate: Date;
     reporting_month_startdate: Date;
@@ -77,7 +77,7 @@ export interface Dispute {
     transaction_type: string;
     currency_code: string;
     transaction_status: string;
-    is_successful: 0 |  1; 
+    is_successful: number; 
     channel: string;
     commerce_product: string;
     piv_issuing_bank: string;
