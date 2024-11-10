@@ -134,3 +134,31 @@ export interface Dispute {
     datetime_cancelled_at_local: Date | null;
     dw_modified: Date;
 }
+
+export interface Order {
+  order_id: string;
+  orderitem_id: string;
+  order_date: Date;
+  dimmerchantid: string;
+  merchant_id: string;
+  dimcommerceid: string;
+  dimcommerceinstanceid: string;
+  dimcommerceproductid: string;
+  dimcustomerid: string;
+  transaction_id: string;
+  dimcurrencyid: string;
+  quantity: string;
+  amount_value: string;
+  date_created_at: Date;
+  datetime_created_at: Date;
+  date_created_at_local: Date;
+  datetime_created_at_local: Date;
+  date_paid_at: Date | null;
+  datetime_paid_at: Date | null;
+  date_paid_at_local: Date | null;
+  datetime_paid_at_local: Date | null;
+  pay_for_me_flag: boolean;
+  refunded_flag: boolean;
+  dimstatusid: string;
+  dw_modified: Date;
+}

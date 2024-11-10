@@ -4,6 +4,7 @@ export const TABLES = {
     CUSTOMERS: 'bpo.futurestacks_customers_data',
     DISPUTES: 'bpo.futurestacks_disputes_data',
     TRANSACTIONS: 'bpo.futurestacks_transactions_data',
-    SUBSCRIPTIONS: 'bpo.factcommercesubscriptions'
+    SUBSCRIPTIONS: 'bpo.factcommercesubscriptions',
+    ORDERS: 'bpo.factcommerceorderdetails'
   };
   

@@ -12,7 +12,7 @@ import { writeFileSync } from 'fs';
 import axios from 'axios';
 import { TABLES } from './constants';
 import { databaseRepo } from './db_connection';
-import { Customer, Dispute, Subscription } from './types';
+import { Customer, Dispute, Order, Subscription, Transaction } from './types';
 
 
 
@@ -108,7 +108,7 @@ const disputeAnalysis = async () => {
 
     const openDisputes = await databaseRepo.getWhere<Dispute>(
         TABLES.DISPUTES,
-        undefined,
+        { merchant_id: merchant_id },
         undefined,
         undefined,
         { dispute_status: 'Resolved' }
@@ -118,7 +118,7 @@ const disputeAnalysis = async () => {
 
     const resolvedDisputesLastMonth = await databaseRepo.getWhere<Dispute>(
         TABLES.DISPUTES,
-        { dispute_status: 'Resolved' },
+        { merchant_id: merchant_id, dispute_status: 'Resolved' },
         undefined,
         undefined,
         undefined,
@@ -130,7 +130,7 @@ const disputeAnalysis = async () => {
 
     const resolvedDisputes = await databaseRepo.getWhere<Dispute>(
         TABLES.DISPUTES,
-        { dispute_status: 'Resolved' }
+        { merchant_id: merchant_id, dispute_status: 'Resolved' }
     );
 
     // Calculate Mean Time to Resolution
@@ -258,7 +258,7 @@ const peakShoppingTimes = async () => {
 };
 
 // Function to format hour in time range format (e.g., "12 AM - 1 AM")
-function formatTimeRange(hour: number): string {
+const formatTimeRange = (hour: number): string => {
     const startHour = hour;
     const endHour = (hour + 1) % 24;
 
@@ -272,7 +272,7 @@ function formatTimeRange(hour: number): string {
 }
 
 // Helper function to format hour in 12-hour format
-function formatHourIn12HourFormat(hour: number, period: string): string {
+const formatHourIn12HourFormat = (hour: number, period: string): string => {
     const formattedHour = hour % 12 || 12;  // Convert hour to 12-hour format
     return `${formattedHour} ${period}`;
 }
@@ -350,16 +350,16 @@ const customerSegmentation = async () => {
 const performanceComparison = async () => {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth() -1; // rememeber to remove -1 to get for current month
+    const currentMonth = currentDate.getMonth() - 1; // rememeber to remove -1 to get for current month
 
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1; 
-    const lastYear = currentMonth === 0 ? currentYear - 1 : currentYear; 
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastYear = currentMonth === 0 ? currentYear - 1 : currentYear;
 
     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
-    const endOfCurrentMonth = new Date(currentYear, currentMonth + 1, 0); 
+    const endOfCurrentMonth = new Date(currentYear, currentMonth + 1, 0);
 
     const startOfLastMonth = new Date(lastYear, lastMonth, 1);
-    const endOfLastMonth = new Date(lastYear, lastMonth + 1, 0); 
+    const endOfLastMonth = new Date(lastYear, lastMonth + 1, 0);
 
     const currentMonthSalesData = await databaseRepo.getWhere<Customer>(
         TABLES.CUSTOMERS,
@@ -381,7 +381,7 @@ const performanceComparison = async () => {
         [startOfLastMonth.toISOString(), endOfLastMonth.toISOString(), true]
     );
 
-    
+
     const currentMonthSales = currentMonthSalesData.reduce((sum, payment) => sum + parseFloat(payment.amount_transaction), 0);
 
     const lastMonthSales = lastMonthSalesData.reduce((sum, payment) => sum + parseFloat(payment.amount_transaction), 0);
@@ -439,16 +439,26 @@ const calculateSuccessRate = async () => {
     };
 };
 
-// // Function to analyze sales this month
-// function salesAnalysisThisMonth() {
+// Function to analyze sales this month
+// const salesAnalysisThisMonth = async() => {
 //     const currentDate = new Date();
 //     const currentYear = currentDate.getFullYear();
-//     const currentMonth = currentDate.getMonth();
+//     const currentMonth = currentDate.getMonth() -1; // rememeber to remove -1 to get for current month
 
-//     const monthlySales = getMonthlyPayments();
+//     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+
+//     const monthlySales = await databaseRepo.getWhere<Customer>(
+//         TABLES.CUSTOMERS,
+//         { merchant_id: merchant_id },
+//         undefined,
+//         'datetime_created_at_local',
+//         undefined,
+//         'datetime_created_at_local >= ? AND successful = ?',
+//         [startOfCurrentMonth, true]
+//     );
 
 //     const productRevenue = monthlySales.reduce((acc, payment) => {
-//         acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
+//         acc[payment.transaction_id] = (acc[payment.transaction_id] || 0) + parseFloat(payment.amount_transaction);
 //         return acc;
 //     }, {} as Record<string, number>);
 
@@ -464,7 +474,71 @@ const calculateSuccessRate = async () => {
 //         monthly_sales: monthlySales
 //     };
 // }
-// // Function for product performance analysis
+
+// const salesAnalysisThisMonth = async () => {
+//     const currentDate = new Date();
+//     const currentYear = currentDate.getFullYear();
+//     const currentMonth = currentDate.getMonth() - 1; // Remove -1 to get current month
+
+//     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+
+//     const startOfLastYear = new Date(currentDate.getFullYear() - 1, 0, 1);
+
+//     // Fetch transactions for the current month
+//     const monthlySales = await databaseRepo.getWhere<Customer>(
+//         TABLES.CUSTOMERS,
+//         { merchant_id: merchant_id },
+//         undefined,
+//         'datetime_created_at_local',
+//         undefined,
+//         'datetime_created_at_local >= ? AND successful = ?',
+//         [startOfCurrentMonth, true]
+//     );
+//     console.log("t", monthlySales)
+//     // Map transaction IDs to their product IDs using the orders table
+//     // const transactions = monthlySales.map(sale => sale.transaction_id);
+//     // const productOrders = await databaseRepo.getWhere<Order>(
+//     //     TABLES.ORDERS,
+//     //     undefined,
+//     //     undefined,
+//     //     undefined,
+//     //     undefined,
+//     //     'transaction_id = ANY(?)',
+//     //     [transactions]
+//     // );
+//     // console.log("p", await databaseRepo.getById<Order>(TABLES.ORDERS, 'transaction_id', "204359623"))
+//     // console.log("p", await databaseRepo.getFirst10Records<Order>(TABLES.ORDERS))
+
+//     // Create a map of transaction_id to dimcommerceproductid for easy lookupD
+//     // const transactionToProduct = productOrders.reduce((acc, order) => {
+//     //     acc[order.transaction_id] = order.dimcommerceproductid;
+//     //     // console.log("de", )
+//     //     return acc;
+//     // }, {} as Record<string, string>);
+//     // console.log("t-p", transactionToProduct)
+//     //     // Calculate revenue grouped by dimcommerceproductid
+//     //     const productRevenue = monthlySales.reduce((acc, payment) => {
+//     //         const productId = transactionToProduct[payment.transaction_id];
+//     //         if (productId) {
+//     //             acc[productId] = (acc[productId] || 0) + parseFloat(payment.amount_transaction);
+//     //         }
+//     //         return acc;
+//     //     }, {} as Record<string, number>);
+
+//     //     // Sort and get top 5 products
+//     //     const topProducts = Object.entries(productRevenue)
+//     //         .sort((a, b) => b[1] - a[1])
+//     //         .slice(0, 5);
+
+//     //     console.log("Top Products This Month:", topProducts);
+
+//     //     return {
+//     //         top_products_this_month: topProducts,
+//     //         monthly_sales: monthlySales
+//     //     };
+// }
+
+// Function for product performance analysis
 // function productPerformance() {
 //     const productSalesHistory = payments_df.data.reduce((acc, payment) => {
 //         if (!acc[payment.item]) {
@@ -537,14 +611,14 @@ async function plotCustomerSegmentationPie(segmentationData: { new_customers: nu
             labels: ['New Customers', 'Returning Customers', 'Non-Returning Customers'],
             datasets: [{
                 data: [
-                    segmentationData.new_customers, 
-                    segmentationData.returning_customers, 
+                    segmentationData.new_customers,
+                    segmentationData.returning_customers,
                     segmentationData.non_returning_customers
                 ],
                 backgroundColor: [
-                    'rgba(54, 162, 235, 0.6)',  
-                    'rgba(255, 99, 132, 0.6)',  
-                    'rgba(153, 102, 255, 0.6)' 
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(255, 99, 132, 0.6)',
+                    'rgba(153, 102, 255, 0.6)'
                 ],
             }]
         },

@@ -120,15 +120,15 @@ var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, fun
             case 0:
                 lastMonth = (0, date_fns_1.subMonths)(new Date(), 1);
                 lastMonthISOString = lastMonth.toISOString();
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, undefined, undefined, undefined, { dispute_status: 'Resolved' })];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id }, undefined, undefined, { dispute_status: 'Resolved' })];
             case 1:
                 openDisputes = _a.sent();
                 disputesOpen = openDisputes.length;
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { dispute_status: 'Resolved' }, undefined, undefined, undefined, 'dispute_resolved_at_date >= ?', [lastMonthISOString])];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' }, undefined, undefined, undefined, 'dispute_resolved_at_date >= ?', [lastMonthISOString])];
             case 2:
                 resolvedDisputesLastMonth = _a.sent();
                 disputesResolvedLastMonth = resolvedDisputesLastMonth.length;
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { dispute_status: 'Resolved' })];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' })];
             case 3:
                 resolvedDisputes = _a.sent();
                 meanTimeToResolution = 0;
@@ -228,7 +228,7 @@ var peakShoppingTimes = function () { return __awaiter(void 0, void 0, void 0, f
     });
 }); };
 // Function to format hour in time range format (e.g., "12 AM - 1 AM")
-function formatTimeRange(hour) {
+var formatTimeRange = function (hour) {
     var startHour = hour;
     var endHour = (hour + 1) % 24;
     var startPeriod = startHour >= 12 ? 'PM' : 'AM';
@@ -236,12 +236,12 @@ function formatTimeRange(hour) {
     var startFormatted = formatHourIn12HourFormat(startHour, startPeriod);
     var endFormatted = formatHourIn12HourFormat(endHour, endPeriod);
     return "".concat(startFormatted, " - ").concat(endFormatted);
-}
+};
 // Helper function to format hour in 12-hour format
-function formatHourIn12HourFormat(hour, period) {
+var formatHourIn12HourFormat = function (hour, period) {
     var formattedHour = hour % 12 || 12; // Convert hour to 12-hour format
     return "".concat(formattedHour, " ").concat(period);
-}
+};
 // Function for customer segmentation
 var customerSegmentation = function () { return __awaiter(void 0, void 0, void 0, function () {
     var today, startOfYear, startOfMonth, endOfMonth, startOfThreeMonthsAgo, endOfThreeMonthsAgo, rawQuery, params, activeCustomersData, newCustomers, returningCustomers, nonReturningCustomers, totalActiveCustomers, percentageReturning, percentageNew, percentageNonReturning;
@@ -363,14 +363,23 @@ var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0
         }
     });
 }); };
-// // Function to analyze sales this month
-// function salesAnalysisThisMonth() {
+// Function to analyze sales this month
+// const salesAnalysisThisMonth = async() => {
 //     const currentDate = new Date();
 //     const currentYear = currentDate.getFullYear();
-//     const currentMonth = currentDate.getMonth();
-//     const monthlySales = getMonthlyPayments();
+//     const currentMonth = currentDate.getMonth() -1; // rememeber to remove -1 to get for current month
+//     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+//     const monthlySales = await databaseRepo.getWhere<Customer>(
+//         TABLES.CUSTOMERS,
+//         { merchant_id: merchant_id },
+//         undefined,
+//         'datetime_created_at_local',
+//         undefined,
+//         'datetime_created_at_local >= ? AND successful = ?',
+//         [startOfCurrentMonth, true]
+//     );
 //     const productRevenue = monthlySales.reduce((acc, payment) => {
-//         acc[payment.item] = (acc[payment.item] || 0) + payment.amount;
+//         acc[payment.transaction_id] = (acc[payment.transaction_id] || 0) + parseFloat(payment.amount_transaction);
 //         return acc;
 //     }, {} as Record<string, number>);
 //     const topProducts = Object.entries(productRevenue)
@@ -382,7 +391,52 @@ var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0
 //         monthly_sales: monthlySales
 //     };
 // }
-// // Function for product performance analysis
+var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var currentDate, currentYear, currentMonth, startOfCurrentMonth, startOfLastYear, monthlySales, _a, _b, _c;
+    return __generator(this, function (_d) {
+        switch (_d.label) {
+            case 0:
+                currentDate = new Date();
+                currentYear = currentDate.getFullYear();
+                currentMonth = currentDate.getMonth() - 1;
+                startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+                startOfLastYear = new Date(currentDate.getFullYear() - 1, 0, 1);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND successful = ?', [startOfCurrentMonth, true])];
+            case 1:
+                monthlySales = _d.sent();
+                console.log("t", monthlySales);
+                // Map transaction IDs to their product IDs using the orders table
+                // const transactions = monthlySales.map(sale => sale.transaction_id);
+                // const productOrders = await databaseRepo.getWhere<Order>(
+                //     TABLES.ORDERS,
+                //     undefined,
+                //     undefined,
+                //     undefined,
+                //     undefined,
+                //     'transaction_id = ANY(?)',
+                //     [transactions]
+                // );
+                _b = (_a = console).log;
+                _c = ["p"];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getById(constants_1.TABLES.ORDERS, 'transaction_id', "204359623")];
+            case 2:
+                // Map transaction IDs to their product IDs using the orders table
+                // const transactions = monthlySales.map(sale => sale.transaction_id);
+                // const productOrders = await databaseRepo.getWhere<Order>(
+                //     TABLES.ORDERS,
+                //     undefined,
+                //     undefined,
+                //     undefined,
+                //     undefined,
+                //     'transaction_id = ANY(?)',
+                //     [transactions]
+                // );
+                _b.apply(_a, _c.concat([_d.sent()]));
+                return [2 /*return*/];
+        }
+    });
+}); };
+// Function for product performance analysis
 // function productPerformance() {
 //     const productSalesHistory = payments_df.data.reduce((acc, payment) => {
 //         if (!acc[payment.item]) {
@@ -967,69 +1021,20 @@ function generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr) {
 }
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var sr, cgr, da, sp, rst, csg, pc, psp, error_3;
+        var satm, error_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
-                    _a.trys.push([0, 16, , 17]);
-                    return [4 /*yield*/, calculateSuccessRate()];
+                    _a.trys.push([0, 2, , 3]);
+                    return [4 /*yield*/, salesAnalysisThisMonth()];
                 case 1:
-                    sr = _a.sent();
-                    return [4 /*yield*/, customerGrowthAndRetention()];
+                    satm = _a.sent();
+                    return [3 /*break*/, 3];
                 case 2:
-                    cgr = _a.sent();
-                    return [4 /*yield*/, disputeAnalysis()];
-                case 3:
-                    da = _a.sent();
-                    return [4 /*yield*/, subscriptionPerformance()];
-                case 4:
-                    sp = _a.sent();
-                    return [4 /*yield*/, revenueAndSalesTrends()];
-                case 5:
-                    rst = _a.sent();
-                    return [4 /*yield*/, customerSegmentation()];
-                case 6:
-                    csg = _a.sent();
-                    return [4 /*yield*/, performanceComparison()];
-                case 7:
-                    pc = _a.sent();
-                    return [4 /*yield*/, peakShoppingTimes()
-                        // const satm = await salesAnalysisThisMonth();
-                        // const pp = await productPerformance();
-                    ];
-                case 8:
-                    psp = _a.sent();
-                    // const satm = await salesAnalysisThisMonth();
-                    // const pp = await productPerformance();
-                    return [4 /*yield*/, plotCustomerSegmentationPie(csg)];
-                case 9:
-                    // const satm = await salesAnalysisThisMonth();
-                    // const pp = await productPerformance();
-                    _a.sent();
-                    return [4 /*yield*/, plotCustomerGrowth(cgr.customers_gained_each_month)];
-                case 10:
-                    _a.sent();
-                    return [4 /*yield*/, plotRevenueAndSales(rst.revenue_trends)];
-                case 11:
-                    _a.sent();
-                    return [4 /*yield*/, plotRevenue(rst.revenue_trends)];
-                case 12:
-                    _a.sent();
-                    return [4 /*yield*/, plotTransactions(rst.revenue_trends)];
-                case 13:
-                    _a.sent();
-                    return [4 /*yield*/, plotSubscriptionPerformance(sp.subscription_history)];
-                case 14:
-                    _a.sent();
-                    return [4 /*yield*/, plotPeakShoppingTimes(psp.peak_shopping_times)];
-                case 15:
-                    _a.sent();
-                    return [3 /*break*/, 17];
-                case 16:
                     error_3 = _a.sent();
                     console.error("Error in analysis functions:", error_3);
-                    return [3 /*break*/, 17];
-                case 17: return [2 /*return*/];
+                    return [3 /*break*/, 3];
+                case 3: return [2 /*return*/];
             }
         });
     });
