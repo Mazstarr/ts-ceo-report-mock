@@ -162,3 +162,34 @@ export interface Order {
   dimstatusid: string;
   dw_modified: Date;
 }
+
+export interface Product {
+  dimcommerceproductid: string;
+  product_id: string;
+  product_slug: string;
+  product_name: string;
+  currency: string;
+  amount_price: string;
+  product_type: string;
+  merchant_id: number;
+  created_date: Date;
+  deleted_date: Date | null;
+  active_flag: boolean;
+  variant_flag: boolean;
+  in_stock_flag: boolean;
+  low_stock_alert_flag: boolean;
+  unlimited_stock_flag: boolean;
+  shippable_flag: boolean;
+  minimum_orderable: number;
+  maximum_orderable: number | null;
+  datetime_created_at: Date;
+  datetime_created_at_local: Date;
+  datetime_deleted_at: Date | null;
+  datetime_deleted_at_local: Date | null;
+  dw_modified: Date;
+}
+
+export interface Status{
+  dimstatusid: string;
+  status: string;
+}

@@ -96,7 +96,7 @@ exports.databaseRepo = {
      * @param idColumn Column name of the ID (primary key)
      * @param id ID value to look for
      */
-    getById: function (tableName, idColumn, id) {
+    get: function (tableName, idColumn, id) {
         return __awaiter(this, void 0, void 0, function () {
             return __generator(this, function (_a) {
                 switch (_a.label) {
@@ -135,10 +135,9 @@ exports.databaseRepo = {
                         if (orderByColumn) {
                             query = query.orderBy(orderByColumn, 'desc');
                         }
+                        console.log('Executing SQL query:', query.toString());
                         return [4 /*yield*/, query];
-                    case 1: 
-                    // console.log('Executing SQL query:', query.toString());
-                    return [2 /*return*/, _a.sent()];
+                    case 1: return [2 /*return*/, _a.sent()];
                 }
             });
         });

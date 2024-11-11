@@ -12,12 +12,12 @@ import { writeFileSync } from 'fs';
 import axios from 'axios';
 import { TABLES } from './constants';
 import { databaseRepo } from './db_connection';
-import { Customer, Dispute, Order, Subscription, Transaction } from './types';
+import { Customer, Dispute, Order, Product, Status, Subscription, Transaction } from './types';
 
 
 
 
-const merchant_id = 100043;
+const merchant_id = 151697;
 
 
 // Function to analyze revenue and sales trends over the past year
@@ -440,128 +440,143 @@ const calculateSuccessRate = async () => {
 };
 
 // Function to analyze sales this month
-// const salesAnalysisThisMonth = async() => {
-//     const currentDate = new Date();
-//     const currentYear = currentDate.getFullYear();
-//     const currentMonth = currentDate.getMonth() -1; // rememeber to remove -1 to get for current month
+const salesAnalysisThisMonth = async () => {
+    
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
 
-//     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+    const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
 
-//     const monthlySales = await databaseRepo.getWhere<Customer>(
-//         TABLES.CUSTOMERS,
-//         { merchant_id: merchant_id },
-//         undefined,
-//         'datetime_created_at_local',
-//         undefined,
-//         'datetime_created_at_local >= ? AND successful = ?',
-//         [startOfCurrentMonth, true]
-//     );
+    const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', "delivered");
 
-//     const productRevenue = monthlySales.reduce((acc, payment) => {
-//         acc[payment.transaction_id] = (acc[payment.transaction_id] || 0) + parseFloat(payment.amount_transaction);
-//         return acc;
-//     }, {} as Record<string, number>);
+    const monthlyOrders = await databaseRepo.getWhere<Order>(
+        TABLES.ORDERS,
+        { dimmerchantid: merchant_id.toString() },
+        undefined,
+        'datetime_paid_at',
+        undefined,
+        'datetime_paid_at >= ? AND dimstatusid = ?',
+        [startOfCurrentMonth, deliveredStatus.dimstatusid]
+    );
 
+    const productRevenue = monthlyOrders.reduce((acc, order) => {
+        acc[order.dimcommerceproductid] = (acc[order.dimcommerceproductid] || 0) + parseFloat(order.amount_value);
+        return acc;
+    }, {} as Record<string, number>);
 
-//     const topProducts = Object.entries(productRevenue)
-//         .sort((a, b) => b[1] - a[1])
-//         .slice(0, 5);
+    // Sort and get the top 5 product IDs by revenue
+    const topProductIds = Object.entries(productRevenue)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(entry => entry[0]);
 
-//     console.log("Top Products This Month:", topProducts, topProducts[0][0]);
+    const rawQuery = `dimcommerceproductid IN (${topProductIds.map(() => '?').join(', ')})`;
 
-//     return {
-//         top_products_this_month: topProducts,
-//         monthly_sales: monthlySales
-//     };
-// }
+    // Fetch product details for the top 5 products using raw query
+    const topProducts = await databaseRepo.getWhere<Product>(
+        TABLES.PRODUCTS,
+        {},
+        undefined,
+        'created_date',
+        undefined,
+        rawQuery,
+        topProductIds
+    );
 
-// const salesAnalysisThisMonth = async () => {
-//     const currentDate = new Date();
-//     const currentYear = currentDate.getFullYear();
-//     const currentMonth = currentDate.getMonth() - 1; // Remove -1 to get current month
+    // Map the product details to their IDs for easy lookup
+    const productMap = new Map<string, string>();
+    topProducts.forEach(product => {
+        productMap.set(product.dimcommerceproductid, product.product_name);
+    });
 
-//     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+    // Combine the revenue with the product names, ensuring only entries with defined product names
+    const topProductRevenue: [string, number][] = topProductIds
+        .map(productId => {
+            const productName = productMap.get(productId);
+            return productName ? [productName, productRevenue[productId]] : undefined;
+        })
+        .filter((entry): entry is [string, number] => entry !== undefined);
 
-//     const startOfLastYear = new Date(currentDate.getFullYear() - 1, 0, 1);
+    console.log("Top Products This Month:", topProductRevenue);
 
-//     // Fetch transactions for the current month
-//     const monthlySales = await databaseRepo.getWhere<Customer>(
-//         TABLES.CUSTOMERS,
-//         { merchant_id: merchant_id },
-//         undefined,
-//         'datetime_created_at_local',
-//         undefined,
-//         'datetime_created_at_local >= ? AND successful = ?',
-//         [startOfCurrentMonth, true]
-//     );
-//     console.log("t", monthlySales)
-//     // Map transaction IDs to their product IDs using the orders table
-//     // const transactions = monthlySales.map(sale => sale.transaction_id);
-//     // const productOrders = await databaseRepo.getWhere<Order>(
-//     //     TABLES.ORDERS,
-//     //     undefined,
-//     //     undefined,
-//     //     undefined,
-//     //     undefined,
-//     //     'transaction_id = ANY(?)',
-//     //     [transactions]
-//     // );
-//     // console.log("p", await databaseRepo.getById<Order>(TABLES.ORDERS, 'transaction_id', "204359623"))
-//     // console.log("p", await databaseRepo.getFirst10Records<Order>(TABLES.ORDERS))
+    return {
+        top_products_this_month: topProductRevenue,
+    };
+};
 
-//     // Create a map of transaction_id to dimcommerceproductid for easy lookupD
-//     // const transactionToProduct = productOrders.reduce((acc, order) => {
-//     //     acc[order.transaction_id] = order.dimcommerceproductid;
-//     //     // console.log("de", )
-//     //     return acc;
-//     // }, {} as Record<string, string>);
-//     // console.log("t-p", transactionToProduct)
-//     //     // Calculate revenue grouped by dimcommerceproductid
-//     //     const productRevenue = monthlySales.reduce((acc, payment) => {
-//     //         const productId = transactionToProduct[payment.transaction_id];
-//     //         if (productId) {
-//     //             acc[productId] = (acc[productId] || 0) + parseFloat(payment.amount_transaction);
-//     //         }
-//     //         return acc;
-//     //     }, {} as Record<string, number>);
-
-//     //     // Sort and get top 5 products
-//     //     const topProducts = Object.entries(productRevenue)
-//     //         .sort((a, b) => b[1] - a[1])
-//     //         .slice(0, 5);
-
-//     //     console.log("Top Products This Month:", topProducts);
-
-//     //     return {
-//     //         top_products_this_month: topProducts,
-//     //         monthly_sales: monthlySales
-//     //     };
-// }
 
 // Function for product performance analysis
-// function productPerformance() {
-//     const productSalesHistory = payments_df.data.reduce((acc, payment) => {
-//         if (!acc[payment.item]) {
-//             acc[payment.item] = { total_sales: 0, total_transactions: 0, average_sale_value: 0 };
-//         }
-//         acc[payment.item].total_sales += payment.amount;
-//         acc[payment.item].total_transactions += 1;
-//         return acc;
-//     }, {});
+const productPerformance = async () => {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
 
-//     // Calculate average sale value
-//     Object.keys(productSalesHistory).forEach(item => {
-//         const product = productSalesHistory[item];
-//         product.average_sale_value = product.total_sales / product.total_transactions;
-//     });
+    const startOfCurrentYear = new Date(currentYear, 0, 1);
+    const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', "delivered");
 
-//     console.log("\nProduct Performance Analysis:");
-//     console.log(productSalesHistory);
+    const yearlyOrders = await databaseRepo.getWhere<Order>(
+        TABLES.ORDERS,
+        { dimmerchantid: merchant_id.toString() },
+        undefined,
+        'datetime_paid_at',
+        undefined,
+        'datetime_paid_at >= ? AND dimstatusid = ?',
+        [startOfCurrentYear, deliveredStatus.dimstatusid]
+    );
 
-//     return {
-//         product_sales_history: productSalesHistory,
-//     };
-// }
+    const productSalesHistory = yearlyOrders.reduce((acc, order) => {
+        if (!acc[order.dimcommerceproductid]) {
+            acc[order.dimcommerceproductid] = { total_sales: 0, total_transactions: 0, average_sale_value: 0 };
+        }
+        acc[order.dimcommerceproductid].total_sales += parseFloat(order.amount_value);
+        acc[order.dimcommerceproductid].total_transactions += 1;
+        return acc;
+    }, {} as Record<string, { total_sales: number, total_transactions: number, average_sale_value: number }>);
+
+  
+    const productIds = Object.keys(productSalesHistory);
+
+    const rawQuery = `dimcommerceproductid IN (${productIds.map(() => '?').join(', ')})`;
+
+    // Fetch product details for the products in the sales history using raw query
+    const products = await databaseRepo.getWhere<Product>(
+        TABLES.PRODUCTS,
+        {},
+        undefined,
+        'created_date',
+        undefined,
+        rawQuery,
+        productIds
+    );
+
+    // Map the product details to their IDs for easy lookup
+    const productMap = new Map<string, string>();
+    products.forEach(product => {
+        productMap.set(product.dimcommerceproductid, product.product_name);
+    });
+
+    // Add product names to the sales history and format the output
+    const productSalesWithNames = Object.keys(productSalesHistory).reduce((acc, productId) => {
+        const product = productSalesHistory[productId];
+        const productName = productMap.get(productId) || 'Unknown Product'; 
+        acc[productName] = {
+            total_sales: product.total_sales,
+            total_transactions: product.total_transactions,
+            average_sale_value: product.total_sales / product.total_transactions,
+        };
+        return acc;
+    }, {} as Record<string, { total_sales: number, total_transactions: number, average_sale_value: number }>);
+
+    console.log("\nProduct Performance Analysis:");
+    console.log(productSalesWithNames);
+
+    return {
+        product_sales_history: productSalesWithNames,
+    };
+};
+
+
+
 
 async function saveChartImage(chart: InstanceType<typeof QuickChart>, fileName: string) {
     const imageUrl = await chart.getShortUrl();
@@ -784,16 +799,16 @@ async function plotProductPerformance(productSalesHistory: Record<string, { tota
     }));
 
     // Sort the array based on total_sales
-    const sortedData = productSalesArray.sort((a, b) => a.total_sales - b.total_sales);
+    // const sortedData = productSalesArray.sort((a, b) => a.total_sales - b.total_sales);
 
     const chart = new QuickChart();
     chart.setConfig({
         type: 'bar',
         data: {
-            labels: sortedData.map(entry => entry.item),
+            labels: productSalesArray.map(entry => entry.item),
             datasets: [{
                 label: 'Total Sales',
-                data: sortedData.map(entry => entry.total_sales),
+                data: productSalesArray.map(entry => entry.total_sales),
                 backgroundColor: 'rgba(255, 99, 132, 0.6)',
             }]
         },
@@ -1057,8 +1072,8 @@ async function main() {
         const csg = await customerSegmentation()
         const pc = await performanceComparison()
         const psp = await peakShoppingTimes()
-        // const satm = await salesAnalysisThisMonth();
-        // const pp = await productPerformance();
+        const satm = await salesAnalysisThisMonth();
+        const pp = await productPerformance();
 
         await plotCustomerSegmentationPie(csg)
         await plotCustomerGrowth(cgr.customers_gained_each_month);
@@ -1067,10 +1082,11 @@ async function main() {
         await plotTransactions(rst.revenue_trends)
         await plotSubscriptionPerformance(sp.subscription_history);
         await plotPeakShoppingTimes(psp.peak_shopping_times);
-        // await plotProductPerformance(pp.product_sales_history);
-        // await plotTopProducts(satm.top_products_this_month);
-        // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-        // await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
+
+        await plotProductPerformance(pp.product_sales_history);
+        await plotTopProducts(satm.top_products_this_month);
+        const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+        await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
     } catch (error) {
         console.error("Error in analysis functions:", error);
     }

@@ -42,7 +42,7 @@ export const databaseRepo = {
      * @param idColumn Column name of the ID (primary key)
      * @param id ID value to look for
      */
-    async getById<T>(tableName: string, idColumn: keyof T, id: T[keyof T]): Promise<T | undefined> {
+    async get<T>(tableName: string, idColumn: keyof T, id: T[keyof T]): Promise<T | undefined> {
         return await db<T>(tableName)
             .where(idColumn as string, id as string)
             .first() as T | undefined;
@@ -112,7 +112,6 @@ export const databaseRepo = {
 
         query = query.count('* as count');
     
-        console.log('Executing SQL count query:', query.toString());
         const result = await query;
     
         return result[0].count;
