@@ -49,15 +49,17 @@ var axios_1 = require("axios");
 var constants_1 = require("./constants");
 var db_connection_1 = require("./db_connection");
 var merchant_id = 151697;
+// const merchant_id = 100043;
 // Function to analyze revenue and sales trends over the past year
 var revenueAndSalesTrends = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var today, startOfLastYear, recentPayments, revenueTrends;
+    var today, startOfLastYear, endOfCurrentMonth, recentPayments, revenueTrends;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 today = new Date();
                 startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND successful = ?', [startOfLastYear, true])];
+                endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?', [startOfLastYear, endOfCurrentMonth, true])];
             case 1:
                 recentPayments = _a.sent();
                 revenueTrends = recentPayments.reduce(function (acc, payment) {
@@ -77,17 +79,49 @@ var revenueAndSalesTrends = function () { return __awaiter(void 0, void 0, void 
         }
     });
 }); };
+// Function to analyze transaction count and percentage by channel
+var transactionCountByChannel = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfMonth, endOfMonth, recentPayments, totalTransactions, channelStats, channel;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?', [startOfMonth, endOfMonth, true])];
+            case 1:
+                recentPayments = _a.sent();
+                totalTransactions = recentPayments.length;
+                channelStats = recentPayments.reduce(function (acc, payment) {
+                    var channel = payment.dimchannel || 'Unknown';
+                    if (!acc[channel]) {
+                        acc[channel] = { count: 0, percentage: 0 };
+                    }
+                    acc[channel].count += 1;
+                    return acc;
+                }, {});
+                // Calculate percentage for each channel
+                for (channel in channelStats) {
+                    channelStats[channel].percentage = (channelStats[channel].count / totalTransactions) * 100;
+                }
+                console.log("\nTransaction Count and Percentage by Channel:");
+                console.log(channelStats);
+                return [2 /*return*/, channelStats];
+        }
+    });
+}); };
 // Function to analyze customer growth and retention rates
 var customerGrowthAndRetention = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var today, startOfLastYear, startOfSixMonthsAgo, rawQuery, params, recentCustomers, customerGrowth, newCustomers, endCustomers, retentionRate;
+    var today, startOfLastYear, startOfSixMonthsAgo, endOfCurrentMonth, rawQuery, params, recentCustomers, customerGrowth, newCustomers, endCustomers, retentionRate;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 today = new Date();
                 startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
                 startOfSixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1);
-                rawQuery = "\n        WITH ranked_customers AS (\n            SELECT *, \n                ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n            FROM ??\n            WHERE ?? = ? AND customer_created_at >= ?\n        )\n        SELECT *\n        FROM ranked_customers\n        WHERE row_num = 1\n    ";
-                params = [constants_1.TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfLastYear.toISOString()];
+                endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                rawQuery = "\n        WITH ranked_customers AS (\n            SELECT *, \n                ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n            FROM ??\n            WHERE ?? = ? AND customer_created_at >= ? AND customer_created_at <= ?\n        )\n        SELECT *\n        FROM ranked_customers\n        WHERE row_num = 1\n    ";
+                params = [constants_1.TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfLastYear.toISOString(), endOfCurrentMonth];
                 return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, params)];
             case 1:
                 recentCustomers = _a.sent();
@@ -112,68 +146,24 @@ var customerGrowthAndRetention = function () { return __awaiter(void 0, void 0, 
         }
     });
 }); };
-// Function to analyze disputes
-var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var lastMonth, lastMonthISOString, openDisputes, disputesOpen, resolvedDisputesLastMonth, disputesResolvedLastMonth, resolvedDisputes, meanTimeToResolution, totalDays;
-    return __generator(this, function (_a) {
-        switch (_a.label) {
-            case 0:
-                lastMonth = (0, date_fns_1.subMonths)(new Date(), 1);
-                lastMonthISOString = lastMonth.toISOString();
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id }, undefined, undefined, { dispute_status: 'Resolved' })];
-            case 1:
-                openDisputes = _a.sent();
-                disputesOpen = openDisputes.length;
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' }, undefined, undefined, undefined, 'dispute_resolved_at_date >= ?', [lastMonthISOString])];
-            case 2:
-                resolvedDisputesLastMonth = _a.sent();
-                disputesResolvedLastMonth = resolvedDisputesLastMonth.length;
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' })];
-            case 3:
-                resolvedDisputes = _a.sent();
-                meanTimeToResolution = 0;
-                if (resolvedDisputes.length > 0) {
-                    totalDays = resolvedDisputes.reduce(function (acc, dispute) {
-                        var createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
-                        var resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
-                        if (!createdDate || isNaN(createdDate.getTime()) || !resolvedDate || isNaN(resolvedDate.getTime())) {
-                            return acc;
-                        }
-                        if (resolvedDate < createdDate) {
-                            return acc;
-                        }
-                        return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
-                    }, 0);
-                    meanTimeToResolution = totalDays / resolvedDisputes.length;
-                }
-                console.log("\nNumber of Open Disputes: ".concat(disputesOpen));
-                console.log("Number of Disputes Resolved in Last Month: ".concat(disputesResolvedLastMonth));
-                console.log("Mean Time to Resolution (Days): ".concat(meanTimeToResolution.toFixed(2)));
-                return [2 /*return*/, {
-                        open_disputes: disputesOpen,
-                        resolved_last_month: disputesResolvedLastMonth,
-                        mean_time_to_resolution: meanTimeToResolution.toFixed(2),
-                    }];
-        }
-    });
-}); };
 // Function to analyze subscription performance
 var subscriptionPerformance = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var lastMonth, lastMonthISOString, subscriptionDataLastMonth, totalSubscriptions, subscriptionVolume, uniqueSubscribers, today, startOfLastYear, subscriptionDataLastYear, subscriptionHistory;
+    var today, startOfYear, startOfLastYear, startOfMonth, endOfMonth, subscriptionData, totalSubscriptions, subscriptionVolume, uniqueSubscribers, subscriptionDataLastYear, subscriptionHistory;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
-                lastMonth = (0, date_fns_1.subMonths)(new Date(), 1);
-                lastMonthISOString = lastMonth.toISOString();
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.SUBSCRIPTIONS, { merchant_id: merchant_id }, undefined, 'dw_modified', undefined, 'dw_modified >= ? AND dw_modified < ?', [lastMonthISOString, new Date().toISOString()])];
-            case 1:
-                subscriptionDataLastMonth = _a.sent();
-                totalSubscriptions = subscriptionDataLastMonth.length;
-                subscriptionVolume = subscriptionDataLastMonth.reduce(function (sum, sale) { return sum + sale.amount_subscription; }, 0);
-                uniqueSubscribers = new Set(subscriptionDataLastMonth.map(function (payment) { return payment.dimcustomerid; })).size;
                 today = new Date();
+                startOfYear = new Date(today.getFullYear(), 0, 1);
                 startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.SUBSCRIPTIONS, { merchant_id: merchant_id }, undefined, 'dw_modified', undefined, 'dw_modified >= ? AND dw_modified < ?', [startOfLastYear, new Date().toISOString()])];
+                startOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1), 1);
+                endOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1) + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.SUBSCRIPTIONS, { merchant_id: merchant_id }, undefined, 'dw_modified', undefined, 'dw_modified >= ? AND dw_modified < ?', [startOfMonth, endOfMonth])];
+            case 1:
+                subscriptionData = _a.sent();
+                totalSubscriptions = subscriptionData.length;
+                subscriptionVolume = subscriptionData.reduce(function (sum, sale) { return sum + sale.amount_subscription; }, 0);
+                uniqueSubscribers = new Set(subscriptionData.map(function (payment) { return payment.dimcustomerid; })).size;
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.SUBSCRIPTIONS, { merchant_id: merchant_id }, undefined, 'dw_modified', undefined, 'dw_modified >= ? AND dw_modified < ?', [startOfLastYear, endOfMonth])];
             case 2:
                 subscriptionDataLastYear = _a.sent();
                 subscriptionHistory = subscriptionDataLastYear.reduce(function (acc, payment) {
@@ -185,9 +175,9 @@ var subscriptionPerformance = function () { return __awaiter(void 0, void 0, voi
                     acc[paymentDate].total_revenue += payment.amount_subscription;
                     return acc;
                 }, {});
-                console.log("\nTotal Subscriptions for Last Month: ".concat(totalSubscriptions));
-                console.log("Unique Subscribers for Last Month: ".concat(uniqueSubscribers));
-                console.log("Subscription History for Last Year:");
+                console.log("\nTotal Subscriptions for the Month: ".concat(totalSubscriptions));
+                console.log("Unique Subscribers for the Month: ".concat(uniqueSubscribers));
+                console.log("Subscription History:");
                 console.log(subscriptionHistory);
                 return [2 /*return*/, {
                         total_subscriptions: totalSubscriptions,
@@ -200,13 +190,14 @@ var subscriptionPerformance = function () { return __awaiter(void 0, void 0, voi
 }); };
 // Function to analyze peak shopping times
 var peakShoppingTimes = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var today, startOfLastYear, recentPayments, paymentHours, hourCounts, formattedHourCounts;
+    var today, startOfLastYear, endOfCurrentMonth, recentPayments, paymentHours, hourCounts, formattedHourCounts;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 today = new Date();
                 startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ?', [startOfLastYear])];
+                endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ?', [startOfLastYear, endOfCurrentMonth])];
             case 1:
                 recentPayments = _a.sent();
                 paymentHours = recentPayments.map(function (payment) { return payment.datetime_created_at_local.getHours(); });
@@ -254,11 +245,14 @@ var customerSegmentation = function () { return __awaiter(void 0, void 0, void 0
                 endOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1) + 1, 0);
                 startOfThreeMonthsAgo = new Date(today.getFullYear(), (today.getMonth() - 1) - 3, 1);
                 endOfThreeMonthsAgo = new Date(today.getFullYear(), (today.getMonth() - 1) - 2, 0);
-                rawQuery = "\n    WITH ranked_customers AS (\n        SELECT *, \n            ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n        FROM ??\n        WHERE ?? = ? AND datetime_created_at_local >= ?\n    )\n    SELECT *\n    FROM ranked_customers\n    WHERE row_num = 1\n";
-                params = [constants_1.TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfYear.toISOString()];
+                rawQuery = "\n    WITH ranked_customers AS (\n        SELECT *, \n            ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n        FROM ??\n        WHERE ?? = ? AND datetime_created_at_local >= ? AND datetime_created_at_local <= ?\n    )\n    SELECT *\n    FROM ranked_customers\n    WHERE row_num = 1\n";
+                params = [constants_1.TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfYear.toISOString(), endOfMonth];
+                // Fetch active customers within the year 
+                console.log("execut");
                 return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, params)];
             case 1:
                 activeCustomersData = _a.sent();
+                console.log("executed");
                 newCustomers = activeCustomersData.filter(function (customer) {
                     return customer.customer_created_at && customer.customer_created_at >= startOfMonth && customer.customer_created_at <= endOfMonth;
                 });
@@ -331,14 +325,14 @@ var performanceComparison = function () { return __awaiter(void 0, void 0, void 
 }); };
 // // Function to calculate success rate
 var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var today, startOfLastMonth, endOfLastMonth, transactions, totalPayments, totalVolume, successfulPayments, failedPayments, successRate;
+    var today, startOfMonth, endOfMonth, transactions, totalPayments, totalVolume, successfulPayments, failedPayments, successRate;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 today = new Date();
-                startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ?', [startOfLastMonth.toISOString(), endOfLastMonth.toISOString()])];
+                startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ?', [startOfMonth, endOfMonth])];
             case 1:
                 transactions = _a.sent();
                 totalPayments = transactions.length;
@@ -363,9 +357,75 @@ var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0
         }
     });
 }); };
+// Function to analyze disputes with resolution percentages
+var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfMonth, endOfMonth, openDisputes, disputesOpen, resolvedDisputesForTheMonth, disputesResolved, resolvedDisputes, meanTimeToResolution, totalDays, resolutionCategories, resolutionPercentages;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id }, undefined, undefined, {
+                        dispute_status: 'Resolved',
+                    })];
+            case 1:
+                openDisputes = _a.sent();
+                disputesOpen = openDisputes.length;
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' }, undefined, undefined, undefined, 'dispute_resolved_at_date >= ? AND dispute_resolved_at_date <= ?', [startOfMonth, endOfMonth])];
+            case 2:
+                resolvedDisputesForTheMonth = _a.sent();
+                disputesResolved = resolvedDisputesForTheMonth.length;
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' })];
+            case 3:
+                resolvedDisputes = _a.sent();
+                meanTimeToResolution = 0;
+                if (resolvedDisputes.length > 0) {
+                    totalDays = resolvedDisputes.reduce(function (acc, dispute) {
+                        var createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
+                        var resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
+                        if (!createdDate || isNaN(createdDate.getTime()) || !resolvedDate || isNaN(resolvedDate.getTime())) {
+                            return acc;
+                        }
+                        if (resolvedDate < createdDate) {
+                            return acc;
+                        }
+                        return acc + (resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24); // Convert ms to days
+                    }, 0);
+                    meanTimeToResolution = totalDays / resolvedDisputes.length;
+                }
+                resolutionCategories = [
+                    'Paystack-Accepted',
+                    'Unknown',
+                    'Auto-Accepted',
+                    'Declined',
+                    'Merchant-Accepted'
+                ];
+                resolutionPercentages = resolutionCategories.reduce(function (acc, category) {
+                    var count = resolvedDisputesForTheMonth.filter(function (dispute) { return dispute.dispute_resolution === category; }).length;
+                    var percentage = (count / resolvedDisputes.length) * 100;
+                    acc[category] = {
+                        count: count,
+                        percentage: percentage.toFixed(2) // Format percentage to 2 decimal places
+                    };
+                    return acc;
+                }, {});
+                console.log("\nNumber of Open Disputes: ", disputesOpen);
+                console.log("Number of Disputes Resolved in the Month: ", disputesResolved);
+                console.log("Mean Time to Resolution (Days): ", meanTimeToResolution.toFixed(2));
+                console.log("Dispute Resolution Percentages by Category: ", resolutionPercentages);
+                return [2 /*return*/, {
+                        open_disputes: disputesOpen,
+                        resolved_this_month: disputesResolved,
+                        mean_time_to_resolution: meanTimeToResolution.toFixed(2),
+                        resolution_percentages: resolutionPercentages
+                    }];
+        }
+    });
+}); };
 // Function to analyze sales this month
 var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var currentDate, currentYear, currentMonth, startOfCurrentMonth, deliveredStatus, monthlyOrders, productRevenue, topProductIds, rawQuery, topProducts, productMap, topProductRevenue;
+    var currentDate, currentYear, currentMonth, startOfCurrentMonth, endOfCurrentMonth, deliveredStatus, monthlyOrders, productRevenue, topProductIds, rawQuery, topProducts, productMap, topProductRevenue;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -373,10 +433,11 @@ var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void
                 currentYear = currentDate.getFullYear();
                 currentMonth = currentDate.getMonth();
                 startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
-                return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', "delivered")];
+                endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', 'delivered')];
             case 1:
                 deliveredStatus = _a.sent();
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND dimstatusid = ?', [startOfCurrentMonth, deliveredStatus.dimstatusid])];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?', [startOfCurrentMonth, endOfCurrentMonth, deliveredStatus.dimstatusid])];
             case 2:
                 monthlyOrders = _a.sent();
                 productRevenue = monthlyOrders.reduce(function (acc, order) {
@@ -410,17 +471,18 @@ var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void
 }); };
 // Function for product performance analysis
 var productPerformance = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var currentDate, currentYear, startOfCurrentYear, deliveredStatus, yearlyOrders, productSalesHistory, productIds, rawQuery, products, productMap, productSalesWithNames;
+    var currentDate, currentYear, startOfCurrentYear, endOfCurrentMonth, deliveredStatus, yearlyOrders, productSalesHistory, productIds, rawQuery, products, productMap, productSalesWithNames;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 currentDate = new Date();
                 currentYear = currentDate.getFullYear();
                 startOfCurrentYear = new Date(currentYear, 0, 1);
-                return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', "delivered")];
+                endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1 + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', 'delivered')];
             case 1:
                 deliveredStatus = _a.sent();
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND dimstatusid = ?', [startOfCurrentYear, deliveredStatus.dimstatusid])];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?', [startOfCurrentYear, endOfCurrentMonth, deliveredStatus.dimstatusid])];
             case 2:
                 yearlyOrders = _a.sent();
                 productSalesHistory = yearlyOrders.reduce(function (acc, order) {
@@ -432,6 +494,11 @@ var productPerformance = function () { return __awaiter(void 0, void 0, void 0, 
                     return acc;
                 }, {});
                 productIds = Object.keys(productSalesHistory);
+                if (productIds.length == 0) {
+                    return [2 /*return*/, {
+                            product_sales_history: {},
+                        }];
+                }
                 rawQuery = "dimcommerceproductid IN (".concat(productIds.map(function () { return '?'; }).join(', '), ")");
                 return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.PRODUCTS, {}, undefined, 'created_date', undefined, rawQuery, productIds)];
             case 3:
@@ -1021,14 +1088,14 @@ function generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr) {
 }
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var pp, error_3;
+        var da, error_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     _a.trys.push([0, 2, , 3]);
-                    return [4 /*yield*/, productPerformance()];
+                    return [4 /*yield*/, disputeAnalysis()];
                 case 1:
-                    pp = _a.sent();
+                    da = _a.sent();
                     return [3 /*break*/, 3];
                 case 2:
                     error_3 = _a.sent();

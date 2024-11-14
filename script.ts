@@ -18,20 +18,22 @@ import { Customer, Dispute, Order, Product, Status, Subscription, Transaction } 
 
 
 const merchant_id = 151697;
+// const merchant_id = 100043;
 
 
 // Function to analyze revenue and sales trends over the past year
 const revenueAndSalesTrends = async () => {
     const today = new Date();
     const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+    const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
     const recentPayments = await databaseRepo.getWhere<Customer>(
         TABLES.CUSTOMERS,
         { merchant_id: merchant_id },
         undefined,
         'datetime_created_at_local',
         undefined,
-        'datetime_created_at_local >= ? AND successful = ?',
-        [startOfLastYear, true]
+        'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?',
+        [startOfLastYear, endOfCurrentMonth, true]
     );
 
 
@@ -53,24 +55,66 @@ const revenueAndSalesTrends = async () => {
     };
 }
 
+// Function to analyze transaction count and percentage by channel
+const transactionCountByChannel = async () => {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
+  
+    const recentPayments = await databaseRepo.getWhere<Customer>(
+        TABLES.CUSTOMERS,
+        { merchant_id: merchant_id },
+        undefined,
+        'datetime_created_at_local',
+        undefined,
+        'datetime_created_at_local >= ? AND datetime_created_at_local <= ? AND successful = ?',
+        [startOfMonth, endOfMonth, true]
+    );
+
+    // Total transactions in the past year
+    const totalTransactions = recentPayments.length;
+
+    // Calculate counts and percentages by channel
+    const channelStats = recentPayments.reduce((acc, payment) => {
+        const channel = payment.dimchannel || 'Unknown';
+
+        if (!acc[channel]) {
+            acc[channel] = { count: 0, percentage: 0 };
+        }
+        acc[channel].count += 1;
+        return acc;
+    }, {} as Record<string, { count: number; percentage: number }>);
+
+    // Calculate percentage for each channel
+    for (const channel in channelStats) {
+        channelStats[channel].percentage = (channelStats[channel].count / totalTransactions) * 100;
+    }
+
+    console.log("\nTransaction Count and Percentage by Channel:");
+    console.log(channelStats);
+
+    return channelStats;
+}
+
 // Function to analyze customer growth and retention rates
 const customerGrowthAndRetention = async () => {
     const today = new Date();
     const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
     const startOfSixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1);
+    const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
 
     const rawQuery = `
         WITH ranked_customers AS (
             SELECT *, 
                 ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num
             FROM ??
-            WHERE ?? = ? AND customer_created_at >= ?
+            WHERE ?? = ? AND customer_created_at >= ? AND customer_created_at <= ?
         )
         SELECT *
         FROM ranked_customers
         WHERE row_num = 1
     `;
-    const params = [TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfLastYear.toISOString()];
+    const params = [TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfLastYear.toISOString(), endOfCurrentMonth];
 
     // Fetch the most recent customers created within the last year 
     const recentCustomers = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
@@ -100,93 +144,30 @@ const customerGrowthAndRetention = async () => {
 }
 
 
-// Function to analyze disputes
-const disputeAnalysis = async () => {
-
-    const lastMonth = subMonths(new Date(), 1);
-    const lastMonthISOString = lastMonth.toISOString();
-
-    const openDisputes = await databaseRepo.getWhere<Dispute>(
-        TABLES.DISPUTES,
-        { merchant_id: merchant_id },
-        undefined,
-        undefined,
-        { dispute_status: 'Resolved' }
-    );
-    const disputesOpen = openDisputes.length;
-
-
-    const resolvedDisputesLastMonth = await databaseRepo.getWhere<Dispute>(
-        TABLES.DISPUTES,
-        { merchant_id: merchant_id, dispute_status: 'Resolved' },
-        undefined,
-        undefined,
-        undefined,
-        'dispute_resolved_at_date >= ?',
-        [lastMonthISOString]
-    );
-    const disputesResolvedLastMonth = resolvedDisputesLastMonth.length;
-
-
-    const resolvedDisputes = await databaseRepo.getWhere<Dispute>(
-        TABLES.DISPUTES,
-        { merchant_id: merchant_id, dispute_status: 'Resolved' }
-    );
-
-    // Calculate Mean Time to Resolution
-    let meanTimeToResolution = 0;
-    if (resolvedDisputes.length > 0) {
-        const totalDays = resolvedDisputes.reduce((acc, dispute) => {
-            const createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
-            const resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
-
-            if (!createdDate || isNaN(createdDate.getTime()) || !resolvedDate || isNaN(resolvedDate.getTime())) {
-                return acc;
-            }
-
-            if (resolvedDate < createdDate) {
-                return acc;
-            }
-            return acc + ((resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24)); // Convert ms to days
-        }, 0);
-
-        meanTimeToResolution = totalDays / resolvedDisputes.length;
-    }
-    console.log(`\nNumber of Open Disputes: ${disputesOpen}`);
-    console.log(`Number of Disputes Resolved in Last Month: ${disputesResolvedLastMonth}`);
-    console.log(`Mean Time to Resolution (Days): ${meanTimeToResolution.toFixed(2)}`);
-
-    return {
-        open_disputes: disputesOpen,
-        resolved_last_month: disputesResolvedLastMonth,
-        mean_time_to_resolution: meanTimeToResolution.toFixed(2),
-    };
-}
-
 
 // Function to analyze subscription performance
 const subscriptionPerformance = async () => {
-    const lastMonth = subMonths(new Date(), 1);
-    const lastMonthISOString = lastMonth.toISOString();
+    const today = new Date();
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+    const startOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1), 1); //remember to remove -1 to get for current month and not last month
+    const endOfMonth = new Date(today.getFullYear(), (today.getMonth() - 1) + 1, 0); //remember to remove -1 to get for current month and not last month
 
-
-    const subscriptionDataLastMonth = await databaseRepo.getWhere<Subscription>(
+    const subscriptionData = await databaseRepo.getWhere<Subscription>(
         TABLES.SUBSCRIPTIONS,
         { merchant_id: merchant_id },
         undefined,
         'dw_modified',
         undefined,
         'dw_modified >= ? AND dw_modified < ?',
-        [lastMonthISOString, new Date().toISOString()]
+        [startOfMonth, endOfMonth]
     );
 
-    const totalSubscriptions = subscriptionDataLastMonth.length;
-    const subscriptionVolume = subscriptionDataLastMonth.reduce((sum, sale) => sum + sale.amount_subscription, 0);
-    const uniqueSubscribers = new Set(subscriptionDataLastMonth.map(payment => payment.dimcustomerid)).size;
+    const totalSubscriptions = subscriptionData.length;
+    const subscriptionVolume = subscriptionData.reduce((sum, sale) => sum + sale.amount_subscription, 0);
+    const uniqueSubscribers = new Set(subscriptionData.map(payment => payment.dimcustomerid)).size;
 
 
-    const today = new Date();
-    const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
 
     const subscriptionDataLastYear = await databaseRepo.getWhere<Subscription>(
         TABLES.SUBSCRIPTIONS,
@@ -195,7 +176,7 @@ const subscriptionPerformance = async () => {
         'dw_modified',
         undefined,
         'dw_modified >= ? AND dw_modified < ?',
-        [startOfLastYear, new Date().toISOString()]
+        [startOfLastYear, endOfMonth]
     );
 
     const subscriptionHistory = subscriptionDataLastYear.reduce((acc, payment) => {
@@ -208,9 +189,9 @@ const subscriptionPerformance = async () => {
         return acc;
     }, {});
 
-    console.log(`\nTotal Subscriptions for Last Month: ${totalSubscriptions}`);
-    console.log(`Unique Subscribers for Last Month: ${uniqueSubscribers}`);
-    console.log(`Subscription History for Last Year:`);
+    console.log(`\nTotal Subscriptions for the Month: ${totalSubscriptions}`);
+    console.log(`Unique Subscribers for the Month: ${uniqueSubscribers}`);
+    console.log(`Subscription History:`);
     console.log(subscriptionHistory);
 
     return {
@@ -222,18 +203,20 @@ const subscriptionPerformance = async () => {
 }
 
 
+
 // Function to analyze peak shopping times
 const peakShoppingTimes = async () => {
     const today = new Date();
     const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+    const endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
     const recentPayments = await databaseRepo.getWhere<Customer>(
         TABLES.CUSTOMERS,
         { merchant_id: merchant_id },
         undefined,
         'datetime_created_at_local',
         undefined,
-        'datetime_created_at_local >= ?',
-        [startOfLastYear]
+        'datetime_created_at_local >= ? AND datetime_created_at_local <= ?',
+        [startOfLastYear, endOfCurrentMonth]
     );
 
     const paymentHours = recentPayments.map(payment => payment.datetime_created_at_local.getHours());
@@ -292,17 +275,18 @@ const customerSegmentation = async () => {
         SELECT *, 
             ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num
         FROM ??
-        WHERE ?? = ? AND datetime_created_at_local >= ?
+        WHERE ?? = ? AND datetime_created_at_local >= ? AND datetime_created_at_local <= ?
     )
     SELECT *
     FROM ranked_customers
     WHERE row_num = 1
 `;
-    const params = [TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfYear.toISOString()];
+    const params = [TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfYear.toISOString(), endOfMonth];
 
     // Fetch active customers within the year 
+    console.log("execut")
     const activeCustomersData = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
-
+    console.log("executed")
     const newCustomers = activeCustomersData.filter(customer =>
         customer.customer_created_at && customer.customer_created_at >= startOfMonth && customer.customer_created_at <= endOfMonth
     );
@@ -401,8 +385,8 @@ const performanceComparison = async () => {
 // // Function to calculate success rate
 const calculateSuccessRate = async () => {
     const today = new Date();
-    const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
 
     // Fetch transactions for last month
     const transactions = await databaseRepo.getWhere<Customer>(
@@ -412,7 +396,7 @@ const calculateSuccessRate = async () => {
         'datetime_created_at_local',
         undefined,
         'datetime_created_at_local >= ? AND datetime_created_at_local <= ?',
-        [startOfLastMonth.toISOString(), endOfLastMonth.toISOString()]
+        [startOfMonth, endOfMonth]
     );
 
     const totalPayments = transactions.length;
@@ -439,25 +423,101 @@ const calculateSuccessRate = async () => {
     };
 };
 
+// Function to analyze disputes with resolution percentages
+const disputeAnalysis = async () => {
+
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); // Remove -1 to get for current month
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); // Remove -1 to get for current month
+
+    const openDisputes = await databaseRepo.getWhere<Dispute>(TABLES.DISPUTES, { merchant_id: merchant_id }, undefined, undefined, {
+        dispute_status: 'Resolved',
+    });
+    const disputesOpen = openDisputes.length;
+
+    const resolvedDisputesForTheMonth = await databaseRepo.getWhere<Dispute>(
+        TABLES.DISPUTES,
+        { merchant_id: merchant_id , dispute_status: 'Resolved' },
+        undefined,
+        undefined,
+        undefined,
+        'dispute_resolved_at_date >= ? AND dispute_resolved_at_date <= ?',
+        [startOfMonth, endOfMonth]
+    );
+    const disputesResolved = resolvedDisputesForTheMonth.length;
+
+    const resolvedDisputes = await databaseRepo.getWhere<Dispute>(TABLES.DISPUTES, {merchant_id: merchant_id , dispute_status: 'Resolved' });
+
+    // Calculate Mean Time to Resolution
+    let meanTimeToResolution = 0;
+    if (resolvedDisputes.length > 0) {
+        const totalDays = resolvedDisputes.reduce((acc, dispute) => {
+            const createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
+            const resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
+
+            if (!createdDate || isNaN(createdDate.getTime()) || !resolvedDate || isNaN(resolvedDate.getTime())) {
+                return acc;
+            }
+
+            if (resolvedDate < createdDate) {
+                return acc;
+            }
+            return acc + (resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24); // Convert ms to days
+        }, 0);
+
+        meanTimeToResolution = totalDays / resolvedDisputes.length;
+    }
+
+    // Calculate percentages for each dispute resolution category
+    const resolutionCategories = [
+        'Paystack-Accepted',
+        'Unknown',
+        'Auto-Accepted',
+        'Declined',
+        'Merchant-Accepted'
+    ];
+    
+    const resolutionPercentages = resolutionCategories.reduce((acc, category) => {
+        const count = resolvedDisputesForTheMonth.filter(dispute => dispute.dispute_resolution === category).length;
+        const percentage = (count / resolvedDisputes.length) * 100;
+        acc[category] = {
+            count,
+            percentage: percentage.toFixed(2) // Format percentage to 2 decimal places
+        };
+        return acc;
+    }, {} as Record<string, { count: number; percentage: string }>);
+
+    console.log("\nNumber of Open Disputes: ", disputesOpen);
+    console.log("Number of Disputes Resolved in the Month: ", disputesResolved);
+    console.log("Mean Time to Resolution (Days): ", meanTimeToResolution.toFixed(2));
+    console.log("Dispute Resolution Percentages by Category: ", resolutionPercentages);
+
+    return {
+        open_disputes: disputesOpen,
+        resolved_this_month: disputesResolved,
+        mean_time_to_resolution: meanTimeToResolution.toFixed(2),
+        resolution_percentages: resolutionPercentages
+    };
+};
+
+
 // Function to analyze sales this month
 const salesAnalysisThisMonth = async () => {
-    
+
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth();
-
     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
-
-    const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', "delivered");
-
+    const endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+    const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'delivered');
     const monthlyOrders = await databaseRepo.getWhere<Order>(
         TABLES.ORDERS,
         { dimmerchantid: merchant_id.toString() },
         undefined,
         'datetime_paid_at',
         undefined,
-        'datetime_paid_at >= ? AND dimstatusid = ?',
-        [startOfCurrentMonth, deliveredStatus.dimstatusid]
+        'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?',
+        [startOfCurrentMonth, endOfCurrentMonth, deliveredStatus.dimstatusid]
     );
 
     const productRevenue = monthlyOrders.reduce((acc, order) => {
@@ -512,16 +572,16 @@ const productPerformance = async () => {
     const currentYear = currentDate.getFullYear();
 
     const startOfCurrentYear = new Date(currentYear, 0, 1);
-    const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', "delivered");
-
+    const endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
+    const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'delivered');
     const yearlyOrders = await databaseRepo.getWhere<Order>(
         TABLES.ORDERS,
         { dimmerchantid: merchant_id.toString() },
         undefined,
         'datetime_paid_at',
         undefined,
-        'datetime_paid_at >= ? AND dimstatusid = ?',
-        [startOfCurrentYear, deliveredStatus.dimstatusid]
+        'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?',
+        [startOfCurrentYear, endOfCurrentMonth, deliveredStatus.dimstatusid]
     );
 
     const productSalesHistory = yearlyOrders.reduce((acc, order) => {
@@ -533,8 +593,13 @@ const productPerformance = async () => {
         return acc;
     }, {} as Record<string, { total_sales: number, total_transactions: number, average_sale_value: number }>);
 
-  
+
     const productIds = Object.keys(productSalesHistory);
+    if (productIds.length == 0) {
+        return {
+            product_sales_history: {},
+        };
+    }
 
     const rawQuery = `dimcommerceproductid IN (${productIds.map(() => '?').join(', ')})`;
 
@@ -558,7 +623,7 @@ const productPerformance = async () => {
     // Add product names to the sales history and format the output
     const productSalesWithNames = Object.keys(productSalesHistory).reduce((acc, productId) => {
         const product = productSalesHistory[productId];
-        const productName = productMap.get(productId) || 'Unknown Product'; 
+        const productName = productMap.get(productId) || 'Unknown Product';
         acc[productName] = {
             total_sales: product.total_sales,
             total_transactions: product.total_transactions,
@@ -1064,29 +1129,33 @@ async function generateReport(rst: any, cgr: any, da: any, sp: any, pp: any, psp
 
 async function main() {
     try {
-        const sr = await calculateSuccessRate();
-        const cgr = await customerGrowthAndRetention();
+        // await transactionCountByChannel()
         const da = await disputeAnalysis();
-        const sp = await subscriptionPerformance();
-        const rst = await revenueAndSalesTrends()
-        const csg = await customerSegmentation()
-        const pc = await performanceComparison()
-        const psp = await peakShoppingTimes()
-        const satm = await salesAnalysisThisMonth();
-        const pp = await productPerformance();
+        // const satm = await salesAnalysisThisMonth();
+        // const pp = await productPerformance();
+        // const sr = await calculateSuccessRate();
+        // const pc = await performanceComparison()
+        // const sp = await subscriptionPerformance();
+        // const psp = await peakShoppingTimes()
+        // const rst = await revenueAndSalesTrends()
+        // const cgr = await customerGrowthAndRetention();
 
-        await plotCustomerSegmentationPie(csg)
-        await plotCustomerGrowth(cgr.customers_gained_each_month);
-        await plotRevenueAndSales(rst.revenue_trends);
-        await plotRevenue(rst.revenue_trends);
-        await plotTransactions(rst.revenue_trends)
-        await plotSubscriptionPerformance(sp.subscription_history);
-        await plotPeakShoppingTimes(psp.peak_shopping_times);
+        // const csg = await customerSegmentation()
+// Auto-Accepted
+        // console.log("orders", await databaseRepo.getWhere<Dispute>(TABLES.DISPUTES, undefined, 'dispute_resolution'))
 
-        await plotProductPerformance(pp.product_sales_history);
-        await plotTopProducts(satm.top_products_this_month);
-        const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-        await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
+        // await plotCustomerSegmentationPie(csg)
+        // await plotCustomerGrowth(cgr.customers_gained_each_month);
+        // await plotRevenueAndSales(rst.revenue_trends);
+        // await plotRevenue(rst.revenue_trends);
+        // await plotTransactions(rst.revenue_trends)
+        // await plotSubscriptionPerformance(sp.subscription_history);
+        // await plotPeakShoppingTimes(psp.peak_shopping_times);
+
+        // await plotProductPerformance(pp.product_sales_history);
+        // await plotTopProducts(satm.top_products_this_month);
+        // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+        // await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
     } catch (error) {
         console.error("Error in analysis functions:", error);
     }

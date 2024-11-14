@@ -87,7 +87,7 @@ export const databaseRepo = {
         if (orderByColumn) {
             query = query.orderBy(orderByColumn as string, 'desc');
         }
-        // console.log('Executing SQL query:', query.toString());
+        console.log('Executing SQL query:', query.toString());
 
         return await query as T[];
     },

@@ -156,7 +156,6 @@ exports.databaseRepo = {
                             query = query.whereNot(excludeCondition);
                         }
                         query = query.count('* as count');
-                        console.log('Executing SQL count query:', query.toString());
                         return [4 /*yield*/, query];
                     case 1:
                         result = _a.sent();
