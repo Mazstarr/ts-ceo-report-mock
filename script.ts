@@ -60,7 +60,7 @@ const transactionCountByChannel = async () => {
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
-  
+
     const recentPayments = await databaseRepo.getWhere<Customer>(
         TABLES.CUSTOMERS,
         { merchant_id: merchant_id },
@@ -388,6 +388,7 @@ const calculateSuccessRate = async () => {
     const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
 
+    
     // Fetch transactions for last month
     const transactions = await databaseRepo.getWhere<Customer>(
         TABLES.CUSTOMERS,
@@ -437,7 +438,7 @@ const disputeAnalysis = async () => {
 
     const resolvedDisputesForTheMonth = await databaseRepo.getWhere<Dispute>(
         TABLES.DISPUTES,
-        { merchant_id: merchant_id , dispute_status: 'Resolved' },
+        { merchant_id: merchant_id, dispute_status: 'Resolved' },
         undefined,
         undefined,
         undefined,
@@ -446,7 +447,7 @@ const disputeAnalysis = async () => {
     );
     const disputesResolved = resolvedDisputesForTheMonth.length;
 
-    const resolvedDisputes = await databaseRepo.getWhere<Dispute>(TABLES.DISPUTES, {merchant_id: merchant_id , dispute_status: 'Resolved' });
+    const resolvedDisputes = await databaseRepo.getWhere<Dispute>(TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' });
 
     // Calculate Mean Time to Resolution
     let meanTimeToResolution = 0;
@@ -476,7 +477,7 @@ const disputeAnalysis = async () => {
         'Declined',
         'Merchant-Accepted'
     ];
-    
+
     const resolutionPercentages = resolutionCategories.reduce((acc, category) => {
         const count = resolvedDisputesForTheMonth.filter(dispute => dispute.dispute_resolution === category).length;
         const percentage = (count / resolvedDisputes.length) * 100;
@@ -1126,11 +1127,50 @@ async function generateReport(rst: any, cgr: any, da: any, sp: any, pp: any, psp
 
 }
 
+const getMerchants = async () => {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
+
+    const rawQuery = `
+    SELECT 
+        merchant_id, 
+        merchant_business_type, 
+        merchant_category,
+        merchant_industry,
+        merchant_country, 
+        merchant_classification, 
+        mcc_category,
+        SUM(transaction_amount) AS total_transaction_volume
+    FROM ??
+    WHERE reporting_date >= ? AND reporting_date <= ?
+    GROUP BY merchant_id, merchant_business_type, merchant_category, merchant_industry, merchant_country, merchant_classification, mcc_category;
+    `;
+
+    const results = await databaseRepo.executeRawQuery<Transaction>(rawQuery, [
+        TABLES.TRANSACTIONS,
+        startOfMonth,
+        endOfMonth,
+    ]);
+
+    console.log('Unique merchants with total transaction volume for the month:', results);
+    return results;
+};
+
+
+const getMerchantById = async (merchant_id: number) => {
+    const merchant = await databaseRepo.get<Transaction>(TABLES.TRANSACTIONS, 'merchant_id', merchant_id);
+    console.log("m", merchant)
+    return merchant;
+
+}
 
 async function main() {
     try {
+        
+        await getMerchants();
         // await transactionCountByChannel()
-        const da = await disputeAnalysis();
+        // const da = await disputeAnalysis();
         // const satm = await salesAnalysisThisMonth();
         // const pp = await productPerformance();
         // const sr = await calculateSuccessRate();
@@ -1141,8 +1181,9 @@ async function main() {
         // const cgr = await customerGrowthAndRetention();
 
         // const csg = await customerSegmentation()
-// Auto-Accepted
-        // console.log("orders", await databaseRepo.getWhere<Dispute>(TABLES.DISPUTES, undefined, 'dispute_resolution'))
+        // Auto-Accepted
+
+
 
         // await plotCustomerSegmentationPie(csg)
         // await plotCustomerGrowth(cgr.customers_gained_each_month);

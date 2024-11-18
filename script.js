@@ -1086,16 +1086,53 @@ function generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr) {
         });
     });
 }
+var getMerchants = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfMonth, endOfMonth, rawQuery, results;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                rawQuery = "\n    SELECT \n        merchant_id, \n        merchant_business_type, \n        merchant_category,\n        merchant_industry,\n        merchant_country, \n        merchant_classification, \n        mcc_category,\n        SUM(transaction_amount) AS total_transaction_volume\n    FROM ??\n    WHERE reporting_date >= ? AND reporting_date <= ?\n    GROUP BY merchant_id, merchant_business_type, merchant_category, merchant_industry, merchant_country, merchant_classification, mcc_category;\n    ";
+                return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, [
+                        constants_1.TABLES.TRANSACTIONS,
+                        startOfMonth,
+                        endOfMonth,
+                    ])];
+            case 1:
+                results = _a.sent();
+                console.log('Unique merchants with total transaction volume for the month:', results);
+                return [2 /*return*/];
+        }
+    });
+}); };
+var getMerchantById = function (merchant_id) { return __awaiter(void 0, void 0, void 0, function () {
+    var merchant;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.TRANSACTIONS, 'merchant_id', merchant_id)];
+            case 1:
+                merchant = _a.sent();
+                console.log("m", merchant);
+                return [2 /*return*/, merchant];
+        }
+    });
+}); };
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var da, error_3;
+        var error_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     _a.trys.push([0, 2, , 3]);
-                    return [4 /*yield*/, disputeAnalysis()];
+                    // const merchant = await databaseRepo.getWhere<Transaction>(TABLES.TRANSACTIONS, {merchant_id: merchant_id});
+                    // console.log("m", merchant.reduce((sum, payment) => sum + parseFloat(payment.transaction_amount), 0))
+                    return [4 /*yield*/, getMerchants()];
                 case 1:
-                    da = _a.sent();
+                    // const merchant = await databaseRepo.getWhere<Transaction>(TABLES.TRANSACTIONS, {merchant_id: merchant_id});
+                    // console.log("m", merchant.reduce((sum, payment) => sum + parseFloat(payment.transaction_amount), 0))
+                    _a.sent();
                     return [3 /*break*/, 3];
                 case 2:
                     error_3 = _a.sent();
