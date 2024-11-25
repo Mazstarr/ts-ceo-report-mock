@@ -4,6 +4,7 @@ const path = require('path');
 const QuickChart = require('quickchart-js');
 const Handlebars = require('handlebars');
 const pdf = require('html-pdf-node');
+const puppeteer = require('puppeteer');
 
 
 import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } from 'date-fns';
@@ -17,8 +18,8 @@ import { Customer, Dispute, Order, Product, Status, Subscription, Transaction } 
 
 
 
-const merchant_id = 151697;
-// const merchant_id = 100043;
+// const merchant_id = 151697;
+const merchant_id = 100043;
 
 
 // Function to analyze revenue and sales trends over the past year
@@ -109,6 +110,7 @@ const customerGrowthAndRetention = async () => {
                 ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num
             FROM ??
             WHERE ?? = ? AND customer_created_at >= ? AND customer_created_at <= ?
+            ORDER BY customer_created_at ASC
         )
         SELECT *
         FROM ranked_customers
@@ -447,12 +449,11 @@ const disputeAnalysis = async () => {
     );
     const disputesResolved = resolvedDisputesForTheMonth.length;
 
-    const resolvedDisputes = await databaseRepo.getWhere<Dispute>(TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' });
 
     // Calculate Mean Time to Resolution
     let meanTimeToResolution = 0;
-    if (resolvedDisputes.length > 0) {
-        const totalDays = resolvedDisputes.reduce((acc, dispute) => {
+    if (resolvedDisputesForTheMonth.length > 0) {
+        const totalDays = resolvedDisputesForTheMonth.reduce((acc, dispute) => {
             const createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
             const resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
 
@@ -466,7 +467,7 @@ const disputeAnalysis = async () => {
             return acc + (resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24); // Convert ms to days
         }, 0);
 
-        meanTimeToResolution = totalDays / resolvedDisputes.length;
+        meanTimeToResolution = totalDays / resolvedDisputesForTheMonth.length;
     }
 
     // Calculate percentages for each dispute resolution category
@@ -480,7 +481,9 @@ const disputeAnalysis = async () => {
 
     const resolutionPercentages = resolutionCategories.reduce((acc, category) => {
         const count = resolvedDisputesForTheMonth.filter(dispute => dispute.dispute_resolution === category).length;
-        const percentage = (count / resolvedDisputes.length) * 100;
+        const percentage = resolvedDisputesForTheMonth.length > 0
+        ? (count / resolvedDisputesForTheMonth.length) * 100
+        : 0;
         acc[category] = {
             count,
             percentage: percentage.toFixed(2) // Format percentage to 2 decimal places
@@ -512,20 +515,20 @@ const salesAnalysisThisMonth = async () => {
     const endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
 
     const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'delivered');
-   const paidStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'paid');
+    const paidStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'paid');
 
-   const statusIds = [deliveredStatus.dimstatusid, paidStatus.dimstatusid];
+    const statusIds = [deliveredStatus.dimstatusid, paidStatus.dimstatusid];
 
-   // Fetch orders with either "delivered" or "paid" status
-   const monthlyOrders = await databaseRepo.getWhere<Order>(
-       TABLES.ORDERS,
-       { dimmerchantid: merchant_id.toString() },
-       undefined,
-       'datetime_paid_at',
-       undefined,
-       'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid IN (?, ?)',
-       [startOfCurrentMonth, endOfCurrentMonth, ...statusIds]
-   );
+    // Fetch orders with either "delivered" or "paid" status
+    const monthlyOrders = await databaseRepo.getWhere<Order>(
+        TABLES.ORDERS,
+        { dimmerchantid: merchant_id.toString() },
+        undefined,
+        'datetime_paid_at',
+        undefined,
+        'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid IN (?, ?)',
+        [startOfCurrentMonth, endOfCurrentMonth, ...statusIds]
+    );
 
     const productRevenue = monthlyOrders.reduce((acc, order) => {
         acc[order.dimcommerceproductid] = (acc[order.dimcommerceproductid] || 0) + parseFloat(order.amount_value);
@@ -589,7 +592,7 @@ const productPerformance = async () => {
     const endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
     const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'delivered');
     const paidStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'paid');
- 
+
     const statusIds = [deliveredStatus.dimstatusid, paidStatus.dimstatusid];
 
     const yearlyOrders = await databaseRepo.getWhere<Order>(
@@ -662,6 +665,7 @@ const productPerformance = async () => {
 
 
 async function saveChartImage(chart: InstanceType<typeof QuickChart>, fileName: string) {
+    console.log("plotting")
     const imageUrl = await chart.getShortUrl();
     console.log("url", fileName, imageUrl);
 
@@ -675,7 +679,7 @@ async function saveChartImage(chart: InstanceType<typeof QuickChart>, fileName: 
 async function plotCustomerGrowth(customerGrowth: Record<string, number>) {
     // Transform the object into an array
     const customerGrowthArray = Object.entries(customerGrowth).map(([added_on, new_customers]) => ({
-        added_on,
+        added_on: format(new Date(added_on), 'MMM yyyy'),
         new_customers,
     }));
 
@@ -687,18 +691,19 @@ async function plotCustomerGrowth(customerGrowth: Record<string, number>) {
             datasets: [{
                 label: 'New Customers',
                 data: customerGrowthArray.map(entry => entry.new_customers),
-                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                backgroundColor: '#09A5DB',
             }]
         },
         options: {
-            plugins: {
-                title: { display: true, text: 'Customer Growth (New Customers per Month)' },
-            },
+            legend: { display: false },
             scales: { y: { beginAtZero: true } },
         }
     });
 
-    await saveChartImage(chart, 'customer_growth.png');
+    chart.setWidth(565);
+    chart.setHeight(300);
+
+    return chart.toDataUrl();
 }
 
 async function plotCustomerSegmentationPie(segmentationData: { new_customers: number; returning_customers: number; non_returning_customers: number }) {
@@ -714,23 +719,25 @@ async function plotCustomerSegmentationPie(segmentationData: { new_customers: nu
                     segmentationData.non_returning_customers
                 ],
                 backgroundColor: [
-                    'rgba(54, 162, 235, 0.6)',
-                    'rgba(255, 99, 132, 0.6)',
-                    'rgba(153, 102, 255, 0.6)'
+                    '#011B33',
+                    '#FFAD00',
+                    '#E35D69'
                 ],
             }]
         },
         options: {
+            legend: { display: false },
             plugins: {
-                title: {
-                    display: true,
-                    text: 'Customer Segmentation (New vs. Returning vs. Non-Returning)'
-                }
-            }
+                datalabels: { display: false }, // Disable datalabels plugin
+            },
+            scales: { y: { beginAtZero: true } },
         }
     });
 
-    await saveChartImage(chart, 'customer_segmentation_pie.png');
+    chart.setWidth(153);
+    chart.setHeight(153); 
+    chart.setDevicePixelRatio(2); 
+    return chart.toDataUrl();
 }
 
 
@@ -775,8 +782,9 @@ async function plotRevenueAndSales(revenueTrends: Record<string, { total_revenue
 
 async function plotRevenue(revenueTrends: Record<string, { total_revenue: number }>) {
 
+
     const revenueTrendsArray = Object.entries(revenueTrends).map(([payment_date, { total_revenue }]) => ({
-        payment_date,
+        payment_date: format(new Date(payment_date), 'MMM yyyy'),
         total_revenue,
     }));
 
@@ -789,27 +797,55 @@ async function plotRevenue(revenueTrends: Record<string, { total_revenue: number
                 {
                     label: 'Total Revenue',
                     data: revenueTrendsArray.map(entry => entry.total_revenue),
-                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderColor: '#09A5DB',  // Line color
+                    borderWidth: 2,
                     fill: false,
                 }
             ]
         },
         options: {
-            plugins: {
-                title: { display: true, text: 'Total Revenue Over the Past Year' },
+            legend: { display: false },
+            // title: { display: true, text: 'Total Revenue Over the Past Year' },
+            scales: {
+                x: {
+                    ticks: {
+                        color: '#B1BAC3',
+                        autoSkip: true,  // Automatically skip labels if too many
+                    },
+
+                    grid: {
+                        color: '#E0F3FD',
+                    },
+                    borderColor: '#333B43',
+                    borderWidth: 2,
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: '#B1BAC3',
+                    },
+                    grid: {
+                        color: '#E0F3FD',
+                    },
+                    borderColor: '#333B43',
+                    borderWidth: 2,
+                },
             },
-            scales: { y: { beginAtZero: true } },
+
         }
+
     });
 
-    await saveChartImage(chart, 'total_revenue_trends.png');
-}
+    chart.setWidth(565);
+    chart.setHeight(300);
 
+    return chart.toDataUrl();
+}
 
 async function plotTransactions(revenueTrends: Record<string, { total_transactions: number; }>) {
 
     const revenueTrendsArray = Object.entries(revenueTrends).map(([payment_date, { total_transactions }]) => ({
-        payment_date,
+        payment_date: format(new Date(payment_date), 'MMM yyyy'),
         total_transactions,
     }));
 
@@ -822,30 +858,54 @@ async function plotTransactions(revenueTrends: Record<string, { total_transactio
                 {
                     label: 'Total Transactions',
                     data: revenueTrendsArray.map(entry => entry.total_transactions),
-                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderColor: '#22D34B',
                     fill: false,
                 }
             ]
         },
         options: {
-            plugins: {
-                title: {
-                    display: true,
-                    text: 'Total Transactions Over the Past Year'
+            legend: { display: false },
+            scales: {
+                x: {
+                    ticks: {
+                        color: '#B1BAC3',
+                        autoSkip: true,  // Automatically skip labels if too many
+                    },
+
+                    grid: {
+                        color: '#E0F3FD',
+                    },
+                    borderColor: '#333B43',
+                    borderWidth: 2,
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        color: '#B1BAC3',
+                    },
+                    grid: {
+                        color: '#E0F3FD',
+                    },
+                    borderColor: '#333B43',
+                    borderWidth: 2,
                 },
             },
-            scales: { y: { beginAtZero: true } },
+
         }
+
     });
 
-    await saveChartImage(chart, 'total_transaction_trends.png');
+    chart.setWidth(565);
+    chart.setHeight(300);
+
+    return chart.toDataUrl();
 }
 
 
 async function plotSubscriptionPerformance(subscriptionHistory: Record<string, { total_subscriptions: number; total_revenue: number; }>) {
     // Transform the subscriptionHistory object into an array
     const subscriptionArray = Object.entries(subscriptionHistory).map(([payment_date, { total_subscriptions }]) => ({
-        payment_date,
+        payment_date: format(new Date(payment_date), 'MMM yyyy'),
         total_subscriptions,
     }));
 
@@ -857,18 +917,19 @@ async function plotSubscriptionPerformance(subscriptionHistory: Record<string, {
             datasets: [{
                 label: 'Total Subscriptions',
                 data: subscriptionArray.map(entry => entry.total_subscriptions), // Extracting total_subscriptions for data
-                backgroundColor: 'rgba(128, 0, 128, 0.6)',
+                backgroundColor: '#09A5DB',
             }]
         },
         options: {
-            plugins: {
-                title: { display: true, text: 'Subscription Performance Over Time' },
-            },
+            legend: { display: false },
             scales: { y: { beginAtZero: true } },
         }
     });
 
-    await saveChartImage(chart, 'subscription_performance.png');
+    chart.setWidth(565);
+    chart.setHeight(300);
+
+    return chart.toDataUrl();
 }
 
 
@@ -915,19 +976,20 @@ async function plotTopProducts(topProducts: [string, number][]) {
         data: {
             labels: topProducts.map(entry => entry[0]),
             datasets: [{
-                label: 'Total Revenue',
+                label: 'Top products',
                 data: topProducts.map(entry => entry[1]),
-                backgroundColor: 'rgba(255, 159, 64, 0.6)',
+                backgroundColor: '#09A5DB',
             }]
         },
         options: {
-            plugins: {
-                title: { display: true, text: 'Top Products This Month' },
-            },
+            legend: { display: false },
             scales: { y: { beginAtZero: true } },
         }
     });
-    await saveChartImage(chart, 'top_products_this_month.png');
+    chart.setWidth(565);
+    chart.setHeight(300);
+
+    return chart.toDataUrl();
 }
 
 async function plotPeakShoppingTimes(peakTimes: Record<string, number>) {
@@ -943,20 +1005,18 @@ async function plotPeakShoppingTimes(peakTimes: Record<string, number>) {
             datasets: [{
                 label: 'Transaction Counts',
                 data: counts,
-                backgroundColor: 'rgba(0, 255, 127, 0.6)',
+                backgroundColor: '#09A5DB',
             }]
         },
         options: {
-            plugins: {
-                title: {
-                    display: true,
-                    text: 'Peak Shopping Times'
-                }
-            },
+            legend: { display: false },
             scales: { y: { beginAtZero: true } },
         }
     });
-    await saveChartImage(chart, 'peak_shopping_times.png');
+    chart.setWidth(565);
+    chart.setHeight(300);
+
+    return chart.toDataUrl();
 }
 
 function getImageUrl(imgPath: string) {
@@ -1192,38 +1252,235 @@ const getMerchantById = async (merchant_id: number) => {
 
 }
 
+// async function createPdfReportNew() {
+
+//     Handlebars.registerHelper('gt', function (a: number, b: number) {
+//         return a > b;
+//     });
+
+//     Handlebars.registerHelper('gte', function (a: number, b: number) {
+//         return a >= b;
+//     });
+//     const templateHtml = fs.readFileSync('template.html', 'utf-8');
+//     const template = Handlebars.compile(templateHtml);
+//     const templateData = {
+//         current_month: format(new Date(), 'MMMM'),
+
+//     };
+
+//     const htmlContent = template(templateData);
+//     const options = { format: 'A4' };
+//     const file = { content: htmlContent };
+//     const pdfBuffer = await pdf.generatePdf(file, options);
+//     fs.writeFileSync('new_report.pdf', pdfBuffer);
+//     console.log("PDF report generated successfully.");
+// }
+// da: any, satm: any, sp: any, cgr: any, csg: any,
+// result: any
+
+async function createPdfReportNew(sr: any, da:any, satm: any, sp: any, cgr: any, csg: any, psp: any, image_blobs: any) {
+    // Read the HTML template
+    const templateHtml = fs.readFileSync('template.html', 'utf-8');
+
+    // Register Handlebars helpers
+    Handlebars.registerHelper('gt', function (a, b) {
+        return a > b;
+    });
+
+    Handlebars.registerHelper('gte', function (a, b) {
+        return a >= b;
+    });
+
+    // Read the pie chart image and convert it to base64
+    const pieImagePath = path.join(__dirname, 'assets/images/pie.svg');
+    const pieImageBase64 = fs.readFileSync(pieImagePath, { encoding: 'base64' });
+
+    const arrowImagePath = path.join(__dirname, 'assets/images/arrow.svg');
+    const arrowImageBase64 = fs.readFileSync(arrowImagePath, { encoding: 'base64' });
+
+
+    const peakShoppingTimeStats = Object.entries(psp.peak_shopping_times as Record<string, number>).reduce(
+        (acc, curr) => {
+            if (acc) {
+                if (curr?.[1] > acc.transactions) {
+                    return {
+                        time: curr[0],
+                        transactions: curr[1],
+                    };
+                } else {
+                    return acc;
+                }
+            } else {
+                return {
+                    time: curr[0],
+                    transactions: curr[1],
+                };
+            }
+        },
+        null as null | {
+            time: string;
+            transactions: number;
+        }
+    );
+    // Prepare template data
+    const templateData = {
+        current_month: format(new Date(), 'MMMM'),
+        pieImageBase64: pieImageBase64,
+        arrowImageBase64: arrowImageBase64,
+        total_payments: sr.total_payments.toLocaleString(),
+        total_volume: sr.total_volume.toLocaleString() || 'X',
+        successful_payments: sr.successful_payments.toLocaleString(),
+        success_rate: sr.success_rate.toFixed(2),
+        revenue_trend_image: image_blobs['total_revenue_trends'],
+        transaction_trend_image: image_blobs['total_transaction_trends'],
+        best_product: satm.top_products_this_month?.[0]?.[0] || null,
+        best_product_revenue: satm.top_products_this_month?.[0]?.[1]
+            ? satm.top_products_this_month[0][1].toLocaleString()
+            : 0,
+        top_products_image: image_blobs['top_products'],
+        subscription_performance_image: image_blobs['subscription_performance'],
+        total_subscriptions: sp.total_subscriptions,
+        subscription_volume: sp.subscription_volume.toLocaleString(),
+        customer_growth_image: image_blobs['customer_growth'],
+        customer_segmentation_image: image_blobs['customer_segmentation_pie'],
+        new_customers: csg.new_customers,
+        returning_customers: csg.returning_customers,
+        non_returning_customers: csg.non_returning_customers,
+        retention_rate_over_last_year: cgr.retention_rate_over_last_year,
+        peak_shopping_time: peakShoppingTimeStats.time,
+        peak_shopping_time_transactions: peakShoppingTimeStats.transactions,
+        peak_times_image: image_blobs['peak_shopping_times'],
+        open_disputes: da.open_disputes,
+        resolved_this_month: da.resolved_this_month,
+        mean_time_to_resolution: da.mean_time_to_resolution,
+        // revenue_sales_trend: getImageUrl('./revenue_and_sales_trends.png'),
+        // responses_to_key_questions: result.responses_to_key_questions,
+        // action_plan: result.action_plan,
+        // ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
+        // ceo_summary_paragraphs: result.ceo_summary_paragraphs
+    };
+
+    // Compile the Handlebars template
+    const template = Handlebars.compile(templateHtml);
+    const htmlContent = template(templateData);
+
+    // Launch Puppeteer browser
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
+    // Path to the fonts in the assets directory
+    const fontDir = path.join(__dirname, 'assets/fonts');
+
+    // Inject external CSS for fonts into the page dynamically
+    await page.addStyleTag({
+        content: `
+            @font-face {
+                font-family: 'Graphik';
+                src: url('file://${path.join(fontDir, 'Graphik-Medium.otf')}') format('truetype');
+                font-weight: 600;
+                font-style: normal;
+            }
+            @font-face {
+                font-family: 'Graphik';
+                src: url('file://${path.join(fontDir, 'Graphik-Regular.otf')}') format('truetype');
+                font-weight: 400;
+                font-style: normal;
+            }
+            @font-face {
+                font-family: 'Graphik';
+                src: url('file://${path.join(fontDir, 'Graphik-MediumItalic.otf')}') format('truetype');
+                font-weight: 600;
+                font-style: italic;
+            }
+            @font-face {
+                font-family: 'Graphik';
+                src: url('file://${path.join(fontDir, 'Graphik-RegularItalic.otf')}') format('truetype');
+                font-weight: 400;
+                font-style: italic;
+            }
+            @font-face {
+                font-family: 'Boing';
+                src: url('file://${path.join(fontDir, 'Boing-SemiBold.ttf')}') format('truetype');
+                font-weight: 600;
+                font-style: normal;
+            }
+            @font-face {
+                font-family: 'Boing';
+                src: url('file://${path.join(fontDir, 'Boing-SemiBoldItalic.ttf')}') format('truetype');
+                font-weight: 600;
+                font-style: italic;
+            }
+        `
+    });
+
+    // Set the HTML content of the page
+    await page.setContent(htmlContent);
+
+    // Generate the PDF
+    await page.pdf({ path: 'new_report.pdf', format: 'A4' });
+
+    // Close the browser
+    await browser.close();
+    console.log("PDF report generated successfully.");
+}
+
+
 async function main() {
     try {
 
         // await getMerchants();
         // await transactionCountByChannel()
-        // const satm = await salesAnalysisThisMonth();
-        // const da = await disputeAnalysis();
-        const pp = await productPerformance();
-        // const sr = await calculateSuccessRate();
+
+        const sr = await calculateSuccessRate();
+        const rst = await revenueAndSalesTrends()
+        const satm = await salesAnalysisThisMonth();
+        const sp = await subscriptionPerformance();
+        const csg = await customerSegmentation()
+        const cgr = await customerGrowthAndRetention();
+        const psp = await peakShoppingTimes()
+        const da = await disputeAnalysis();
+        // const pp = await productPerformance();
         // const pc = await performanceComparison()
-        // const sp = await subscriptionPerformance();
-        // const psp = await peakShoppingTimes()
-        // const rst = await revenueAndSalesTrends()
-        // const cgr = await customerGrowthAndRetention();
+        await plotRevenue(rst.revenue_trends);
+        const image_blobs = {};
+        const [
+            totalRevenueTrendsPlot,
+            totalTransactionTrendsPlot,
+            topProductsPlot,
+            subscriptionPerformancePlot,
+            customerSegmentationPie,
+            customerGrowthPlot,
+            peakShoppingTimesPlot,
+            // revenueAndSalesPlot,
+            // productPerformancePlot,
+        ] = await Promise.all([
+            plotRevenue(rst.revenue_trends),
+            plotTransactions(rst.revenue_trends),
+            plotTopProducts(satm.top_products_this_month),
+            plotSubscriptionPerformance(sp.subscription_history),
+            plotCustomerSegmentationPie(csg),
+            plotCustomerGrowth(cgr.customers_gained_each_month),
+            plotPeakShoppingTimes(psp.peak_shopping_times),
+            // plotRevenueAndSales(rst.revenue_trends),
+            // plotProductPerformance(pp.product_sales_history),
+        ]);
 
-        // const csg = await customerSegmentation()
-        // Auto-Accepted
+        // Assign plots to image_blobs
+        image_blobs['total_revenue_trends'] = totalRevenueTrendsPlot;
+        image_blobs['total_transaction_trends'] = totalTransactionTrendsPlot;
+        image_blobs['top_products'] = topProductsPlot;
+        image_blobs['subscription_performance'] = subscriptionPerformancePlot;
+        image_blobs['customer_segmentation_pie'] = customerSegmentationPie;
+        image_blobs['customer_growth'] = customerGrowthPlot;
+        image_blobs['peak_shopping_times'] = peakShoppingTimesPlot;
+        //   image_blobs['revenue_and_sales_trends'] = revenueAndSalesPlot;
+        //   image_blobs['product_performance'] = productPerformancePlot;
 
 
-
-        // await plotCustomerSegmentationPie(csg)
-        // await plotCustomerGrowth(cgr.customers_gained_each_month);
-        // await plotRevenueAndSales(rst.revenue_trends);
-        // await plotRevenue(rst.revenue_trends);
-        // await plotTransactions(rst.revenue_trends)
-        // await plotSubscriptionPerformance(sp.subscription_history);
-        // await plotPeakShoppingTimes(psp.peak_shopping_times);
-
-        // await plotProductPerformance(pp.product_sales_history);
-        // await plotTopProducts(satm.top_products_this_month);
         // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
         // await createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result));
+        // da, satm, sp, cgr, csg,
+        await createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs);
     } catch (error) {
         console.error("Error in analysis functions:", error);
     }

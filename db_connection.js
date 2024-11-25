@@ -133,7 +133,7 @@ exports.databaseRepo = {
                             query = query.distinct(distinctColumn);
                         }
                         if (orderByColumn) {
-                            query = query.orderBy(orderByColumn, 'desc');
+                            query = query.orderBy(orderByColumn, 'asc');
                         }
                         console.log('Executing SQL query:', query.toString());
                         return [4 /*yield*/, query];

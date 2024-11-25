@@ -51,14 +51,15 @@ var path = require('path');
 var QuickChart = require('quickchart-js');
 var Handlebars = require('handlebars');
 var pdf = require('html-pdf-node');
+var puppeteer = require('puppeteer');
 var date_fns_1 = require("date-fns");
 var fs = require("fs");
 var fs_1 = require("fs");
 var axios_1 = require("axios");
 var constants_1 = require("./constants");
 var db_connection_1 = require("./db_connection");
-var merchant_id = 151697;
-// const merchant_id = 100043;
+// const merchant_id = 151697;
+var merchant_id = 100043;
 // Function to analyze revenue and sales trends over the past year
 var revenueAndSalesTrends = function () { return __awaiter(void 0, void 0, void 0, function () {
     var today, startOfLastYear, endOfCurrentMonth, recentPayments, revenueTrends;
@@ -129,7 +130,7 @@ var customerGrowthAndRetention = function () { return __awaiter(void 0, void 0, 
                 startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
                 startOfSixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1);
                 endOfCurrentMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
-                rawQuery = "\n        WITH ranked_customers AS (\n            SELECT *, \n                ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n            FROM ??\n            WHERE ?? = ? AND customer_created_at >= ? AND customer_created_at <= ?\n        )\n        SELECT *\n        FROM ranked_customers\n        WHERE row_num = 1\n    ";
+                rawQuery = "\n        WITH ranked_customers AS (\n            SELECT *, \n                ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n            FROM ??\n            WHERE ?? = ? AND customer_created_at >= ? AND customer_created_at <= ?\n            ORDER BY customer_created_at ASC\n        )\n        SELECT *\n        FROM ranked_customers\n        WHERE row_num = 1\n    ";
                 params = [constants_1.TABLES.CUSTOMERS, 'merchant_id', merchant_id, startOfLastYear.toISOString(), endOfCurrentMonth];
                 return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, params)];
             case 1:
@@ -368,7 +369,7 @@ var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0
 }); };
 // Function to analyze disputes with resolution percentages
 var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var today, startOfMonth, endOfMonth, openDisputes, disputesOpen, resolvedDisputesForTheMonth, disputesResolved, resolvedDisputes, meanTimeToResolution, totalDays, resolutionCategories, resolutionPercentages;
+    var today, startOfMonth, endOfMonth, openDisputes, disputesOpen, resolvedDisputesForTheMonth, disputesResolved, meanTimeToResolution, totalDays, resolutionCategories, resolutionPercentages;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -385,12 +386,9 @@ var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, fun
             case 2:
                 resolvedDisputesForTheMonth = _a.sent();
                 disputesResolved = resolvedDisputesForTheMonth.length;
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.DISPUTES, { merchant_id: merchant_id, dispute_status: 'Resolved' })];
-            case 3:
-                resolvedDisputes = _a.sent();
                 meanTimeToResolution = 0;
-                if (resolvedDisputes.length > 0) {
-                    totalDays = resolvedDisputes.reduce(function (acc, dispute) {
+                if (resolvedDisputesForTheMonth.length > 0) {
+                    totalDays = resolvedDisputesForTheMonth.reduce(function (acc, dispute) {
                         var createdDate = dispute.dispute_created_at_date ? new Date(dispute.dispute_created_at_date) : null;
                         var resolvedDate = dispute.dispute_resolved_at_date ? new Date(dispute.dispute_resolved_at_date) : null;
                         if (!createdDate || isNaN(createdDate.getTime()) || !resolvedDate || isNaN(resolvedDate.getTime())) {
@@ -401,7 +399,7 @@ var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, fun
                         }
                         return acc + (resolvedDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24); // Convert ms to days
                     }, 0);
-                    meanTimeToResolution = totalDays / resolvedDisputes.length;
+                    meanTimeToResolution = totalDays / resolvedDisputesForTheMonth.length;
                 }
                 resolutionCategories = [
                     'Paystack-Accepted',
@@ -412,7 +410,9 @@ var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, fun
                 ];
                 resolutionPercentages = resolutionCategories.reduce(function (acc, category) {
                     var count = resolvedDisputesForTheMonth.filter(function (dispute) { return dispute.dispute_resolution === category; }).length;
-                    var percentage = (count / resolvedDisputes.length) * 100;
+                    var percentage = resolvedDisputesForTheMonth.length > 0
+                        ? (count / resolvedDisputesForTheMonth.length) * 100
+                        : 0;
                     acc[category] = {
                         count: count,
                         percentage: percentage.toFixed(2) // Format percentage to 2 decimal places
@@ -553,7 +553,9 @@ function saveChartImage(chart, fileName) {
         var imageUrl, response, buffer;
         return __generator(this, function (_a) {
             switch (_a.label) {
-                case 0: return [4 /*yield*/, chart.getShortUrl()];
+                case 0:
+                    console.log("plotting");
+                    return [4 /*yield*/, chart.getShortUrl()];
                 case 1:
                     imageUrl = _a.sent();
                     console.log("url", fileName, imageUrl);
@@ -573,38 +575,32 @@ function plotCustomerGrowth(customerGrowth) {
     return __awaiter(this, void 0, void 0, function () {
         var customerGrowthArray, chart;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    customerGrowthArray = Object.entries(customerGrowth).map(function (_a) {
-                        var added_on = _a[0], new_customers = _a[1];
-                        return ({
-                            added_on: added_on,
-                            new_customers: new_customers,
-                        });
-                    });
-                    chart = new QuickChart();
-                    chart.setConfig({
-                        type: 'bar',
-                        data: {
-                            labels: customerGrowthArray.map(function (entry) { return entry.added_on; }),
-                            datasets: [{
-                                    label: 'New Customers',
-                                    data: customerGrowthArray.map(function (entry) { return entry.new_customers; }),
-                                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                                }]
-                        },
-                        options: {
-                            plugins: {
-                                title: { display: true, text: 'Customer Growth (New Customers per Month)' },
-                            },
-                            scales: { y: { beginAtZero: true } },
-                        }
-                    });
-                    return [4 /*yield*/, saveChartImage(chart, 'customer_growth.png')];
-                case 1:
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+            customerGrowthArray = Object.entries(customerGrowth).map(function (_a) {
+                var added_on = _a[0], new_customers = _a[1];
+                return ({
+                    added_on: (0, date_fns_1.format)(new Date(added_on), 'MMM yyyy'),
+                    new_customers: new_customers,
+                });
+            });
+            chart = new QuickChart();
+            chart.setConfig({
+                type: 'bar',
+                data: {
+                    labels: customerGrowthArray.map(function (entry) { return entry.added_on; }),
+                    datasets: [{
+                            label: 'New Customers',
+                            data: customerGrowthArray.map(function (entry) { return entry.new_customers; }),
+                            backgroundColor: '#09A5DB',
+                        }]
+                },
+                options: {
+                    legend: { display: false },
+                    scales: { y: { beginAtZero: true } },
+                }
+            });
+            chart.setWidth(565);
+            chart.setHeight(300);
+            return [2 /*return*/, chart.toDataUrl()];
         });
     });
 }
@@ -612,40 +608,36 @@ function plotCustomerSegmentationPie(segmentationData) {
     return __awaiter(this, void 0, void 0, function () {
         var chart;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    chart = new QuickChart();
-                    chart.setConfig({
-                        type: 'pie',
-                        data: {
-                            labels: ['New Customers', 'Returning Customers', 'Non-Returning Customers'],
-                            datasets: [{
-                                    data: [
-                                        segmentationData.new_customers,
-                                        segmentationData.returning_customers,
-                                        segmentationData.non_returning_customers
-                                    ],
-                                    backgroundColor: [
-                                        'rgba(54, 162, 235, 0.6)',
-                                        'rgba(255, 99, 132, 0.6)',
-                                        'rgba(153, 102, 255, 0.6)'
-                                    ],
-                                }]
-                        },
-                        options: {
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: 'Customer Segmentation (New vs. Returning vs. Non-Returning)'
-                                }
-                            }
-                        }
-                    });
-                    return [4 /*yield*/, saveChartImage(chart, 'customer_segmentation_pie.png')];
-                case 1:
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+            chart = new QuickChart();
+            chart.setConfig({
+                type: 'pie',
+                data: {
+                    labels: ['New Customers', 'Returning Customers', 'Non-Returning Customers'],
+                    datasets: [{
+                            data: [
+                                segmentationData.new_customers,
+                                segmentationData.returning_customers,
+                                segmentationData.non_returning_customers
+                            ],
+                            backgroundColor: [
+                                '#011B33',
+                                '#FFAD00',
+                                '#E35D69'
+                            ],
+                        }]
+                },
+                options: {
+                    legend: { display: false },
+                    plugins: {
+                        datalabels: { display: false }, // Disable datalabels plugin
+                    },
+                    scales: { y: { beginAtZero: true } },
+                }
+            });
+            chart.setWidth(153);
+            chart.setHeight(153);
+            chart.setDevicePixelRatio(2);
+            return [2 /*return*/, chart.toDataUrl()];
         });
     });
 }
@@ -702,41 +694,60 @@ function plotRevenue(revenueTrends) {
     return __awaiter(this, void 0, void 0, function () {
         var revenueTrendsArray, chart;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    revenueTrendsArray = Object.entries(revenueTrends).map(function (_a) {
-                        var payment_date = _a[0], total_revenue = _a[1].total_revenue;
-                        return ({
-                            payment_date: payment_date,
-                            total_revenue: total_revenue,
-                        });
-                    });
-                    chart = new QuickChart();
-                    chart.setConfig({
-                        type: 'line',
-                        data: {
-                            labels: revenueTrendsArray.map(function (entry) { return entry.payment_date; }),
-                            datasets: [
-                                {
-                                    label: 'Total Revenue',
-                                    data: revenueTrendsArray.map(function (entry) { return entry.total_revenue; }),
-                                    borderColor: 'rgba(75, 192, 192, 1)',
-                                    fill: false,
-                                }
-                            ]
-                        },
-                        options: {
-                            plugins: {
-                                title: { display: true, text: 'Total Revenue Over the Past Year' },
-                            },
-                            scales: { y: { beginAtZero: true } },
+            revenueTrendsArray = Object.entries(revenueTrends).map(function (_a) {
+                var payment_date = _a[0], total_revenue = _a[1].total_revenue;
+                return ({
+                    payment_date: (0, date_fns_1.format)(new Date(payment_date), 'MMM yyyy'),
+                    total_revenue: total_revenue,
+                });
+            });
+            chart = new QuickChart();
+            chart.setConfig({
+                type: 'line',
+                data: {
+                    labels: revenueTrendsArray.map(function (entry) { return entry.payment_date; }),
+                    datasets: [
+                        {
+                            label: 'Total Revenue',
+                            data: revenueTrendsArray.map(function (entry) { return entry.total_revenue; }),
+                            borderColor: '#09A5DB', // Line color
+                            borderWidth: 2,
+                            fill: false,
                         }
-                    });
-                    return [4 /*yield*/, saveChartImage(chart, 'total_revenue_trends.png')];
-                case 1:
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+                    ]
+                },
+                options: {
+                    legend: { display: false },
+                    // title: { display: true, text: 'Total Revenue Over the Past Year' },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: '#B1BAC3',
+                                autoSkip: true, // Automatically skip labels if too many
+                            },
+                            grid: {
+                                color: '#E0F3FD',
+                            },
+                            borderColor: '#333B43',
+                            borderWidth: 2,
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#B1BAC3',
+                            },
+                            grid: {
+                                color: '#E0F3FD',
+                            },
+                            borderColor: '#333B43',
+                            borderWidth: 2,
+                        },
+                    },
+                }
+            });
+            chart.setWidth(565);
+            chart.setHeight(300);
+            return [2 /*return*/, chart.toDataUrl()];
         });
     });
 }
@@ -744,44 +755,58 @@ function plotTransactions(revenueTrends) {
     return __awaiter(this, void 0, void 0, function () {
         var revenueTrendsArray, chart;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    revenueTrendsArray = Object.entries(revenueTrends).map(function (_a) {
-                        var payment_date = _a[0], total_transactions = _a[1].total_transactions;
-                        return ({
-                            payment_date: payment_date,
-                            total_transactions: total_transactions,
-                        });
-                    });
-                    chart = new QuickChart();
-                    chart.setConfig({
-                        type: 'line',
-                        data: {
-                            labels: revenueTrendsArray.map(function (entry) { return entry.payment_date; }),
-                            datasets: [
-                                {
-                                    label: 'Total Transactions',
-                                    data: revenueTrendsArray.map(function (entry) { return entry.total_transactions; }),
-                                    borderColor: 'rgba(153, 102, 255, 1)',
-                                    fill: false,
-                                }
-                            ]
-                        },
-                        options: {
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: 'Total Transactions Over the Past Year'
-                                },
-                            },
-                            scales: { y: { beginAtZero: true } },
+            revenueTrendsArray = Object.entries(revenueTrends).map(function (_a) {
+                var payment_date = _a[0], total_transactions = _a[1].total_transactions;
+                return ({
+                    payment_date: (0, date_fns_1.format)(new Date(payment_date), 'MMM yyyy'),
+                    total_transactions: total_transactions,
+                });
+            });
+            chart = new QuickChart();
+            chart.setConfig({
+                type: 'line',
+                data: {
+                    labels: revenueTrendsArray.map(function (entry) { return entry.payment_date; }),
+                    datasets: [
+                        {
+                            label: 'Total Transactions',
+                            data: revenueTrendsArray.map(function (entry) { return entry.total_transactions; }),
+                            borderColor: '#22D34B',
+                            fill: false,
                         }
-                    });
-                    return [4 /*yield*/, saveChartImage(chart, 'total_transaction_trends.png')];
-                case 1:
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+                    ]
+                },
+                options: {
+                    legend: { display: false },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: '#B1BAC3',
+                                autoSkip: true, // Automatically skip labels if too many
+                            },
+                            grid: {
+                                color: '#E0F3FD',
+                            },
+                            borderColor: '#333B43',
+                            borderWidth: 2,
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#B1BAC3',
+                            },
+                            grid: {
+                                color: '#E0F3FD',
+                            },
+                            borderColor: '#333B43',
+                            borderWidth: 2,
+                        },
+                    },
+                }
+            });
+            chart.setWidth(565);
+            chart.setHeight(300);
+            return [2 /*return*/, chart.toDataUrl()];
         });
     });
 }
@@ -789,38 +814,32 @@ function plotSubscriptionPerformance(subscriptionHistory) {
     return __awaiter(this, void 0, void 0, function () {
         var subscriptionArray, chart;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    subscriptionArray = Object.entries(subscriptionHistory).map(function (_a) {
-                        var payment_date = _a[0], total_subscriptions = _a[1].total_subscriptions;
-                        return ({
-                            payment_date: payment_date,
-                            total_subscriptions: total_subscriptions,
-                        });
-                    });
-                    chart = new QuickChart();
-                    chart.setConfig({
-                        type: 'bar',
-                        data: {
-                            labels: subscriptionArray.map(function (entry) { return entry.payment_date; }), // Extracting payment_date for labels
-                            datasets: [{
-                                    label: 'Total Subscriptions',
-                                    data: subscriptionArray.map(function (entry) { return entry.total_subscriptions; }), // Extracting total_subscriptions for data
-                                    backgroundColor: 'rgba(128, 0, 128, 0.6)',
-                                }]
-                        },
-                        options: {
-                            plugins: {
-                                title: { display: true, text: 'Subscription Performance Over Time' },
-                            },
-                            scales: { y: { beginAtZero: true } },
-                        }
-                    });
-                    return [4 /*yield*/, saveChartImage(chart, 'subscription_performance.png')];
-                case 1:
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+            subscriptionArray = Object.entries(subscriptionHistory).map(function (_a) {
+                var payment_date = _a[0], total_subscriptions = _a[1].total_subscriptions;
+                return ({
+                    payment_date: (0, date_fns_1.format)(new Date(payment_date), 'MMM yyyy'),
+                    total_subscriptions: total_subscriptions,
+                });
+            });
+            chart = new QuickChart();
+            chart.setConfig({
+                type: 'bar',
+                data: {
+                    labels: subscriptionArray.map(function (entry) { return entry.payment_date; }), // Extracting payment_date for labels
+                    datasets: [{
+                            label: 'Total Subscriptions',
+                            data: subscriptionArray.map(function (entry) { return entry.total_subscriptions; }), // Extracting total_subscriptions for data
+                            backgroundColor: '#09A5DB',
+                        }]
+                },
+                options: {
+                    legend: { display: false },
+                    scales: { y: { beginAtZero: true } },
+                }
+            });
+            chart.setWidth(565);
+            chart.setHeight(300);
+            return [2 /*return*/, chart.toDataUrl()];
         });
     });
 }
@@ -869,31 +888,25 @@ function plotTopProducts(topProducts) {
     return __awaiter(this, void 0, void 0, function () {
         var chart;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    chart = new QuickChart();
-                    chart.setConfig({
-                        type: 'bar',
-                        data: {
-                            labels: topProducts.map(function (entry) { return entry[0]; }),
-                            datasets: [{
-                                    label: 'Total Revenue',
-                                    data: topProducts.map(function (entry) { return entry[1]; }),
-                                    backgroundColor: 'rgba(255, 159, 64, 0.6)',
-                                }]
-                        },
-                        options: {
-                            plugins: {
-                                title: { display: true, text: 'Top Products This Month' },
-                            },
-                            scales: { y: { beginAtZero: true } },
-                        }
-                    });
-                    return [4 /*yield*/, saveChartImage(chart, 'top_products_this_month.png')];
-                case 1:
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+            chart = new QuickChart();
+            chart.setConfig({
+                type: 'bar',
+                data: {
+                    labels: topProducts.map(function (entry) { return entry[0]; }),
+                    datasets: [{
+                            label: 'Top products',
+                            data: topProducts.map(function (entry) { return entry[1]; }),
+                            backgroundColor: '#09A5DB',
+                        }]
+                },
+                options: {
+                    legend: { display: false },
+                    scales: { y: { beginAtZero: true } },
+                }
+            });
+            chart.setWidth(565);
+            chart.setHeight(300);
+            return [2 /*return*/, chart.toDataUrl()];
         });
     });
 }
@@ -901,36 +914,27 @@ function plotPeakShoppingTimes(peakTimes) {
     return __awaiter(this, void 0, void 0, function () {
         var hours, counts, chart;
         return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    hours = Object.keys(peakTimes).map(String);
-                    counts = hours.map(function (hour) { return peakTimes[hour]; });
-                    chart = new QuickChart();
-                    chart.setConfig({
-                        type: 'bar',
-                        data: {
-                            labels: hours.map(function (hour) { return hour.toString(); }),
-                            datasets: [{
-                                    label: 'Transaction Counts',
-                                    data: counts,
-                                    backgroundColor: 'rgba(0, 255, 127, 0.6)',
-                                }]
-                        },
-                        options: {
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: 'Peak Shopping Times'
-                                }
-                            },
-                            scales: { y: { beginAtZero: true } },
-                        }
-                    });
-                    return [4 /*yield*/, saveChartImage(chart, 'peak_shopping_times.png')];
-                case 1:
-                    _a.sent();
-                    return [2 /*return*/];
-            }
+            hours = Object.keys(peakTimes).map(String);
+            counts = hours.map(function (hour) { return peakTimes[hour]; });
+            chart = new QuickChart();
+            chart.setConfig({
+                type: 'bar',
+                data: {
+                    labels: hours.map(function (hour) { return hour.toString(); }),
+                    datasets: [{
+                            label: 'Transaction Counts',
+                            data: counts,
+                            backgroundColor: '#09A5DB',
+                        }]
+                },
+                options: {
+                    legend: { display: false },
+                    scales: { y: { beginAtZero: true } },
+                }
+            });
+            chart.setWidth(565);
+            chart.setHeight(300);
+            return [2 /*return*/, chart.toDataUrl()];
         });
     });
 }
@@ -1151,22 +1155,217 @@ var getMerchantById = function (merchant_id) { return __awaiter(void 0, void 0, 
         }
     });
 }); };
+// async function createPdfReportNew() {
+//     Handlebars.registerHelper('gt', function (a: number, b: number) {
+//         return a > b;
+//     });
+//     Handlebars.registerHelper('gte', function (a: number, b: number) {
+//         return a >= b;
+//     });
+//     const templateHtml = fs.readFileSync('template.html', 'utf-8');
+//     const template = Handlebars.compile(templateHtml);
+//     const templateData = {
+//         current_month: format(new Date(), 'MMMM'),
+//     };
+//     const htmlContent = template(templateData);
+//     const options = { format: 'A4' };
+//     const file = { content: htmlContent };
+//     const pdfBuffer = await pdf.generatePdf(file, options);
+//     fs.writeFileSync('new_report.pdf', pdfBuffer);
+//     console.log("PDF report generated successfully.");
+// }
+// da: any, satm: any, sp: any, cgr: any, csg: any,
+// result: any
+function createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs) {
+    return __awaiter(this, void 0, void 0, function () {
+        var templateHtml, pieImagePath, pieImageBase64, arrowImagePath, arrowImageBase64, peakShoppingTimeStats, templateData, template, htmlContent, browser, page, fontDir;
+        var _a, _b, _c, _d;
+        return __generator(this, function (_e) {
+            switch (_e.label) {
+                case 0:
+                    templateHtml = fs.readFileSync('template.html', 'utf-8');
+                    // Register Handlebars helpers
+                    Handlebars.registerHelper('gt', function (a, b) {
+                        return a > b;
+                    });
+                    Handlebars.registerHelper('gte', function (a, b) {
+                        return a >= b;
+                    });
+                    pieImagePath = path.join(__dirname, 'assets/images/pie.svg');
+                    pieImageBase64 = fs.readFileSync(pieImagePath, { encoding: 'base64' });
+                    arrowImagePath = path.join(__dirname, 'assets/images/arrow.svg');
+                    arrowImageBase64 = fs.readFileSync(arrowImagePath, { encoding: 'base64' });
+                    peakShoppingTimeStats = Object.entries(psp.peak_shopping_times).reduce(function (acc, curr) {
+                        if (acc) {
+                            if ((curr === null || curr === void 0 ? void 0 : curr[1]) > acc.transactions) {
+                                return {
+                                    time: curr[0],
+                                    transactions: curr[1],
+                                };
+                            }
+                            else {
+                                return acc;
+                            }
+                        }
+                        else {
+                            return {
+                                time: curr[0],
+                                transactions: curr[1],
+                            };
+                        }
+                    }, null);
+                    templateData = {
+                        current_month: (0, date_fns_1.format)(new Date(), 'MMMM'),
+                        pieImageBase64: pieImageBase64,
+                        arrowImageBase64: arrowImageBase64,
+                        total_payments: sr.total_payments.toLocaleString(),
+                        total_volume: sr.total_volume.toLocaleString() || 'X',
+                        successful_payments: sr.successful_payments.toLocaleString(),
+                        success_rate: sr.success_rate.toFixed(2),
+                        revenue_trend_image: image_blobs['total_revenue_trends'],
+                        transaction_trend_image: image_blobs['total_transaction_trends'],
+                        best_product: ((_b = (_a = satm.top_products_this_month) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b[0]) || null,
+                        best_product_revenue: ((_d = (_c = satm.top_products_this_month) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d[1])
+                            ? satm.top_products_this_month[0][1].toLocaleString()
+                            : 0,
+                        top_products_image: image_blobs['top_products'],
+                        subscription_performance_image: image_blobs['subscription_performance'],
+                        total_subscriptions: sp.total_subscriptions,
+                        subscription_volume: sp.subscription_volume.toLocaleString(),
+                        customer_growth_image: image_blobs['customer_growth'],
+                        customer_segmentation_image: image_blobs['customer_segmentation_pie'],
+                        new_customers: csg.new_customers,
+                        returning_customers: csg.returning_customers,
+                        non_returning_customers: csg.non_returning_customers,
+                        retention_rate_over_last_year: cgr.retention_rate_over_last_year,
+                        peak_shopping_time: peakShoppingTimeStats.time,
+                        peak_shopping_time_transactions: peakShoppingTimeStats.transactions,
+                        peak_times_image: image_blobs['peak_shopping_times'],
+                        open_disputes: da.open_disputes,
+                        resolved_this_month: da.resolved_this_month,
+                        mean_time_to_resolution: da.mean_time_to_resolution,
+                        // revenue_sales_trend: getImageUrl('./revenue_and_sales_trends.png'),
+                        // responses_to_key_questions: result.responses_to_key_questions,
+                        // action_plan: result.action_plan,
+                        // ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
+                        // ceo_summary_paragraphs: result.ceo_summary_paragraphs
+                    };
+                    template = Handlebars.compile(templateHtml);
+                    htmlContent = template(templateData);
+                    return [4 /*yield*/, puppeteer.launch()];
+                case 1:
+                    browser = _e.sent();
+                    return [4 /*yield*/, browser.newPage()];
+                case 2:
+                    page = _e.sent();
+                    fontDir = path.join(__dirname, 'assets/fonts');
+                    // Inject external CSS for fonts into the page dynamically
+                    return [4 /*yield*/, page.addStyleTag({
+                            content: "\n            @font-face {\n                font-family: 'Graphik';\n                src: url('file://".concat(path.join(fontDir, 'Graphik-Medium.otf'), "') format('truetype');\n                font-weight: 600;\n                font-style: normal;\n            }\n            @font-face {\n                font-family: 'Graphik';\n                src: url('file://").concat(path.join(fontDir, 'Graphik-Regular.otf'), "') format('truetype');\n                font-weight: 400;\n                font-style: normal;\n            }\n            @font-face {\n                font-family: 'Graphik';\n                src: url('file://").concat(path.join(fontDir, 'Graphik-MediumItalic.otf'), "') format('truetype');\n                font-weight: 600;\n                font-style: italic;\n            }\n            @font-face {\n                font-family: 'Graphik';\n                src: url('file://").concat(path.join(fontDir, 'Graphik-RegularItalic.otf'), "') format('truetype');\n                font-weight: 400;\n                font-style: italic;\n            }\n            @font-face {\n                font-family: 'Boing';\n                src: url('file://").concat(path.join(fontDir, 'Boing-SemiBold.ttf'), "') format('truetype');\n                font-weight: 600;\n                font-style: normal;\n            }\n            @font-face {\n                font-family: 'Boing';\n                src: url('file://").concat(path.join(fontDir, 'Boing-SemiBoldItalic.ttf'), "') format('truetype');\n                font-weight: 600;\n                font-style: italic;\n            }\n        ")
+                        })];
+                case 3:
+                    // Inject external CSS for fonts into the page dynamically
+                    _e.sent();
+                    // Set the HTML content of the page
+                    return [4 /*yield*/, page.setContent(htmlContent)];
+                case 4:
+                    // Set the HTML content of the page
+                    _e.sent();
+                    // Generate the PDF
+                    return [4 /*yield*/, page.pdf({ path: 'new_report.pdf', format: 'A4' })];
+                case 5:
+                    // Generate the PDF
+                    _e.sent();
+                    // Close the browser
+                    return [4 /*yield*/, browser.close()];
+                case 6:
+                    // Close the browser
+                    _e.sent();
+                    console.log("PDF report generated successfully.");
+                    return [2 /*return*/];
+            }
+        });
+    });
+}
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var pp, error_3;
-        return __generator(this, function (_a) {
-            switch (_a.label) {
+        var sr, rst, satm, sp, csg, cgr, psp, da, image_blobs, _a, totalRevenueTrendsPlot, totalTransactionTrendsPlot, topProductsPlot, subscriptionPerformancePlot, customerSegmentationPie, customerGrowthPlot, peakShoppingTimesPlot, error_3;
+        return __generator(this, function (_b) {
+            switch (_b.label) {
                 case 0:
-                    _a.trys.push([0, 2, , 3]);
-                    return [4 /*yield*/, productPerformance()];
+                    _b.trys.push([0, 12, , 13]);
+                    return [4 /*yield*/, calculateSuccessRate()];
                 case 1:
-                    pp = _a.sent();
-                    return [3 /*break*/, 3];
+                    sr = _b.sent();
+                    return [4 /*yield*/, revenueAndSalesTrends()];
                 case 2:
-                    error_3 = _a.sent();
+                    rst = _b.sent();
+                    return [4 /*yield*/, salesAnalysisThisMonth()];
+                case 3:
+                    satm = _b.sent();
+                    return [4 /*yield*/, subscriptionPerformance()];
+                case 4:
+                    sp = _b.sent();
+                    return [4 /*yield*/, customerSegmentation()];
+                case 5:
+                    csg = _b.sent();
+                    return [4 /*yield*/, customerGrowthAndRetention()];
+                case 6:
+                    cgr = _b.sent();
+                    return [4 /*yield*/, peakShoppingTimes()];
+                case 7:
+                    psp = _b.sent();
+                    return [4 /*yield*/, disputeAnalysis()];
+                case 8:
+                    da = _b.sent();
+                    // const pp = await productPerformance();
+                    // const pc = await performanceComparison()
+                    return [4 /*yield*/, plotRevenue(rst.revenue_trends)];
+                case 9:
+                    // const pp = await productPerformance();
+                    // const pc = await performanceComparison()
+                    _b.sent();
+                    image_blobs = {};
+                    return [4 /*yield*/, Promise.all([
+                            plotRevenue(rst.revenue_trends),
+                            plotTransactions(rst.revenue_trends),
+                            plotTopProducts(satm.top_products_this_month),
+                            plotSubscriptionPerformance(sp.subscription_history),
+                            plotCustomerSegmentationPie(csg),
+                            plotCustomerGrowth(cgr.customers_gained_each_month),
+                            plotPeakShoppingTimes(psp.peak_shopping_times),
+                            // plotRevenueAndSales(rst.revenue_trends),
+                            // plotProductPerformance(pp.product_sales_history),
+                        ])];
+                case 10:
+                    _a = _b.sent(), totalRevenueTrendsPlot = _a[0], totalTransactionTrendsPlot = _a[1], topProductsPlot = _a[2], subscriptionPerformancePlot = _a[3], customerSegmentationPie = _a[4], customerGrowthPlot = _a[5], peakShoppingTimesPlot = _a[6];
+                    // Assign plots to image_blobs
+                    image_blobs['total_revenue_trends'] = totalRevenueTrendsPlot;
+                    image_blobs['total_transaction_trends'] = totalTransactionTrendsPlot;
+                    image_blobs['top_products'] = topProductsPlot;
+                    image_blobs['subscription_performance'] = subscriptionPerformancePlot;
+                    image_blobs['customer_segmentation_pie'] = customerSegmentationPie;
+                    image_blobs['customer_growth'] = customerGrowthPlot;
+                    image_blobs['peak_shopping_times'] = peakShoppingTimesPlot;
+                    //   image_blobs['revenue_and_sales_trends'] = revenueAndSalesPlot;
+                    //   image_blobs['product_performance'] = productPerformancePlot;
+                    // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+                    // await createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result));
+                    // da, satm, sp, cgr, csg,
+                    return [4 /*yield*/, createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs)];
+                case 11:
+                    //   image_blobs['revenue_and_sales_trends'] = revenueAndSalesPlot;
+                    //   image_blobs['product_performance'] = productPerformancePlot;
+                    // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+                    // await createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result));
+                    // da, satm, sp, cgr, csg,
+                    _b.sent();
+                    return [3 /*break*/, 13];
+                case 12:
+                    error_3 = _b.sent();
                     console.error("Error in analysis functions:", error_3);
-                    return [3 /*break*/, 3];
-                case 3: return [2 /*return*/];
+                    return [3 /*break*/, 13];
+                case 13: return [2 /*return*/];
             }
         });
     });

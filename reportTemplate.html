@@ -71,14 +71,19 @@
         @media print {
             body {
                 background-color: #fff;
-                /* White background for printing */
             }
 
             section {
                 box-shadow: none;
-                /* Remove shadows for print */
                 border: none;
-                /* No borders for print */
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            .avoid-page-break {
+                page-break-inside: avoid;
             }
         }
     </style>
@@ -105,14 +110,16 @@
     </div>
 
     <section>
-        <p class="section-title">Revenue Trend</p>
+        <p class="section-title avoid-page-break">Revenue Trend</p>
         <img src="{{ revenue_trend_image }}" alt="Peak Shopping Times" width="360" height="180" />
     </section>
+    <div class="page-break"></div> <!-- Forces a new page -->
 
     <section>
-        <p class="section-title">Transaction Trend</p>
+        <p class="section-title ">Transaction Trend</p>
         <img src="{{ transaction_trend_image }}" alt="Peak Shopping Times" width="360" height="180" />
     </section>
+    <div class="page-break avoid-page-break"></div> <!-- Forces a new page -->
 
     <div class="cyan-blue-background">
         {{#if best_product_revenue}}
