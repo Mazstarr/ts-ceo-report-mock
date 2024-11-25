@@ -388,7 +388,7 @@ const calculateSuccessRate = async () => {
     const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
 
-    
+
     // Fetch transactions for last month
     const transactions = await databaseRepo.getWhere<Customer>(
         TABLES.CUSTOMERS,
@@ -510,16 +510,22 @@ const salesAnalysisThisMonth = async () => {
     const currentMonth = currentDate.getMonth();
     const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
     const endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
     const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'delivered');
-    const monthlyOrders = await databaseRepo.getWhere<Order>(
-        TABLES.ORDERS,
-        { dimmerchantid: merchant_id.toString() },
-        undefined,
-        'datetime_paid_at',
-        undefined,
-        'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?',
-        [startOfCurrentMonth, endOfCurrentMonth, deliveredStatus.dimstatusid]
-    );
+   const paidStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'paid');
+
+   const statusIds = [deliveredStatus.dimstatusid, paidStatus.dimstatusid];
+
+   // Fetch orders with either "delivered" or "paid" status
+   const monthlyOrders = await databaseRepo.getWhere<Order>(
+       TABLES.ORDERS,
+       { dimmerchantid: merchant_id.toString() },
+       undefined,
+       'datetime_paid_at',
+       undefined,
+       'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid IN (?, ?)',
+       [startOfCurrentMonth, endOfCurrentMonth, ...statusIds]
+   );
 
     const productRevenue = monthlyOrders.reduce((acc, order) => {
         acc[order.dimcommerceproductid] = (acc[order.dimcommerceproductid] || 0) + parseFloat(order.amount_value);
@@ -531,6 +537,13 @@ const salesAnalysisThisMonth = async () => {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
         .map(entry => entry[0]);
+
+    if (topProductIds.length === 0) {
+        console.log("No top products found this month.");
+        return {
+            top_products_this_month: [],
+        };
+    }
 
     const rawQuery = `dimcommerceproductid IN (${topProductIds.map(() => '?').join(', ')})`;
 
@@ -575,14 +588,18 @@ const productPerformance = async () => {
     const startOfCurrentYear = new Date(currentYear, 0, 1);
     const endOfCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
     const deliveredStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'delivered');
+    const paidStatus = await databaseRepo.get<Status>(TABLES.STATUS, 'status', 'paid');
+ 
+    const statusIds = [deliveredStatus.dimstatusid, paidStatus.dimstatusid];
+
     const yearlyOrders = await databaseRepo.getWhere<Order>(
         TABLES.ORDERS,
         { dimmerchantid: merchant_id.toString() },
         undefined,
         'datetime_paid_at',
         undefined,
-        'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?',
-        [startOfCurrentYear, endOfCurrentMonth, deliveredStatus.dimstatusid]
+        'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid IN (?, ?)',
+        [startOfCurrentYear, endOfCurrentMonth, ...statusIds]
     );
 
     const productSalesHistory = yearlyOrders.reduce((acc, order) => {
@@ -949,6 +966,14 @@ function getImageUrl(imgPath: string) {
 }
 
 async function createPdfReport(sr: any, da: any, satm: any, sp: any, cgr: any, csg: any, result: any) {
+
+    Handlebars.registerHelper('gt', function (a: number, b: number) {
+        return a > b;
+    });
+
+    Handlebars.registerHelper('gte', function (a: number, b: number) {
+        return a >= b;
+    });
     const templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
     const template = Handlebars.compile(templateHtml);
     const templateData = {
@@ -971,8 +996,10 @@ async function createPdfReport(sr: any, da: any, satm: any, sp: any, cgr: any, c
         open_disputes: da.open_disputes,
         resolved_last_month: da.resolved_last_month,
         mean_time_to_resolution: da.mean_time_to_resolution,
-        best_product: satm.top_products_this_month[0][0],
-        best_product_revenue: satm.top_products_this_month[0][1].toLocaleString(),
+        best_product: satm.top_products_this_month?.[0]?.[0] || 'No product',
+        best_product_revenue: satm.top_products_this_month?.[0]?.[1]
+            ? satm.top_products_this_month[0][1].toLocaleString()
+            : 0,
         responses_to_key_questions: result.responses_to_key_questions,
         action_plan: result.action_plan,
         ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
@@ -1167,12 +1194,12 @@ const getMerchantById = async (merchant_id: number) => {
 
 async function main() {
     try {
-        
-        await getMerchants();
+
+        // await getMerchants();
         // await transactionCountByChannel()
-        // const da = await disputeAnalysis();
         // const satm = await salesAnalysisThisMonth();
-        // const pp = await productPerformance();
+        // const da = await disputeAnalysis();
+        const pp = await productPerformance();
         // const sr = await calculateSuccessRate();
         // const pc = await performanceComparison()
         // const sp = await subscriptionPerformance();
@@ -1196,7 +1223,7 @@ async function main() {
         // await plotProductPerformance(pp.product_sales_history);
         // await plotTopProducts(satm.top_products_this_month);
         // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-        // await createPdfReport(sr, da, satm, sp, cgr,  csg, JSON.parse(result));
+        // await createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result));
     } catch (error) {
         console.error("Error in analysis functions:", error);
     }

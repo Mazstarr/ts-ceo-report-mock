@@ -115,6 +115,7 @@
     </section>
 
     <div class="cyan-blue-background">
+        {{#if best_product_revenue}}
         <h2> ...sold products </h2>
 
         <img src="{{ top_products_image }}" alt="top products" width="360" height="180" />
@@ -122,14 +123,16 @@
 
         <p> Your best product this month was <span class="blue-text"> {{ best_product }} </span>
             and it netted you <span class="blue-text"> #{{ best_product_revenue }} </span> ! </p>
-
+        {{/if}}
+        {{#if total_subscriptions}}
         <img src="{{ subscription_performance_image }}" alt="Peak Shopping Times" width="360" height="180" />
         <p>Subscription performance</p>
 
-        <p> You had <span class="blue-text"> {{ total_subscriptions }} </span> subscription payments this month, which netted you
+        <p> You had <span class="blue-text"> {{ total_subscriptions }} </span> subscription payments this month, which
+            netted you
             <span class="blue-text"> #{{ subscription_volume }} </span>
         </p>
-
+        {{/if}}
 
     </div>
 
@@ -138,26 +141,51 @@
         <img src="{{ customer_growth_image }}" alt="customer growth image" width="360" height="180" />
         <p>Customers gained each month</p>
 
-        <p> Just last month, you gained <span class="blue-text"> {{ new_customers }} </span> new customers! </p>
+        <p>
+            {{#if new_customers}}
+            {{#if (gt new_customers 0)}}
+            Just last month, you gained <span class="blue-text"> {{ new_customers }} </span> new customers! Fantastic
+            work bringing in new business!
+            {{else}}
+            You didn't gain any new customers last month. Let's strategize on how to attract more customers!
+            {{/if}}
+            {{else}}
+            We don't have customer growth data for last month. Consider monitoring this metric for future insights.
+            {{/if}}
+        </p>
+
         <img src="{{ customer_segmentation_image }}" alt="customer" width="360" height="180" />
         <p>Customer distribution</p>
 
-        <p> Your customer retention rate over last year is currently sitting at <span class="blue-text"> {{
-                retention_rate_over_last_year }}% </span>.
-            You might have to work on that. </p>
-
-    </div>
-
-    <div class="cyan-blue-background">
-        <h2> How we were able to help </h2>
-
-        <h3> Disputes </h3>
-        <p>You had a total of <span class="highlight">{{ open_disputes }}</span> open disputes.</p>
-        <p>{{ resolved_last_month }} were settled in less than {{ mean_time_to_resolution }} days.</p>
+        <p>
+            {{#if retention_rate_over_last_year}}
+            {{#if (gte retention_rate_over_last_year 60)}}
+            Your customer retention rate over the last year is sitting at a solid <span class="blue-text"> {{
+                retention_rate_over_last_year }}% </span>. Keep up the great work maintaining loyal customers!
+            {{else}}
+            Your customer retention rate over the last year is currently at <span class="blue-text"> {{
+                retention_rate_over_last_year }}% </span>. You might want to focus on strategies to retain more
+            customers.
+            {{/if}}
+            {{else}}
+            Retention rate data is unavailable. Make sure to track this metric to understand customer loyalty trends.
+            {{/if}}
         </p>
 
 
     </div>
+    <div class="cyan-blue-background">
+        <h2> How we were able to help </h2>
+
+        {{#if open_disputes}}
+        <h3> Disputes </h3>
+        <p>You had a total of <span class="highlight">{{ open_disputes }}</span> open disputes.</p>
+        <p>{{ resolved_last_month }} were settled in less than {{ mean_time_to_resolution }} days.</p>
+        {{else}}
+        <p>No disputes to report this month. Great job keeping things smooth!</p>
+        {{/if}}
+    </div>
+
 
     <div class="cyan-blue-background">
         <h2> Quick insights </h2>

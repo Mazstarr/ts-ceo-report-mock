@@ -35,6 +35,15 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 require('dotenv').config();
 var csvParser = require('csv-parser');
@@ -425,7 +434,7 @@ var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, fun
 }); };
 // Function to analyze sales this month
 var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var currentDate, currentYear, currentMonth, startOfCurrentMonth, endOfCurrentMonth, deliveredStatus, monthlyOrders, productRevenue, topProductIds, rawQuery, topProducts, productMap, topProductRevenue;
+    var currentDate, currentYear, currentMonth, startOfCurrentMonth, endOfCurrentMonth, deliveredStatus, paidStatus, statusIds, monthlyOrders, productRevenue, topProductIds, rawQuery, topProducts, productMap, topProductRevenue;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -437,8 +446,12 @@ var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void
                 return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', 'delivered')];
             case 1:
                 deliveredStatus = _a.sent();
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?', [startOfCurrentMonth, endOfCurrentMonth, deliveredStatus.dimstatusid])];
+                return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', 'paid')];
             case 2:
+                paidStatus = _a.sent();
+                statusIds = [deliveredStatus.dimstatusid, paidStatus.dimstatusid];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid IN (?, ?)', __spreadArray([startOfCurrentMonth, endOfCurrentMonth], statusIds, true))];
+            case 3:
                 monthlyOrders = _a.sent();
                 productRevenue = monthlyOrders.reduce(function (acc, order) {
                     acc[order.dimcommerceproductid] = (acc[order.dimcommerceproductid] || 0) + parseFloat(order.amount_value);
@@ -448,9 +461,15 @@ var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void
                     .sort(function (a, b) { return b[1] - a[1]; })
                     .slice(0, 5)
                     .map(function (entry) { return entry[0]; });
+                if (topProductIds.length === 0) {
+                    console.log("No top products found this month.");
+                    return [2 /*return*/, {
+                            top_products_this_month: [],
+                        }];
+                }
                 rawQuery = "dimcommerceproductid IN (".concat(topProductIds.map(function () { return '?'; }).join(', '), ")");
                 return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.PRODUCTS, {}, undefined, 'created_date', undefined, rawQuery, topProductIds)];
-            case 3:
+            case 4:
                 topProducts = _a.sent();
                 productMap = new Map();
                 topProducts.forEach(function (product) {
@@ -471,7 +490,7 @@ var salesAnalysisThisMonth = function () { return __awaiter(void 0, void 0, void
 }); };
 // Function for product performance analysis
 var productPerformance = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var currentDate, currentYear, startOfCurrentYear, endOfCurrentMonth, deliveredStatus, yearlyOrders, productSalesHistory, productIds, rawQuery, products, productMap, productSalesWithNames;
+    var currentDate, currentYear, startOfCurrentYear, endOfCurrentMonth, deliveredStatus, paidStatus, statusIds, yearlyOrders, productSalesHistory, productIds, rawQuery, products, productMap, productSalesWithNames;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -482,8 +501,12 @@ var productPerformance = function () { return __awaiter(void 0, void 0, void 0, 
                 return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', 'delivered')];
             case 1:
                 deliveredStatus = _a.sent();
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid = ?', [startOfCurrentYear, endOfCurrentMonth, deliveredStatus.dimstatusid])];
+                return [4 /*yield*/, db_connection_1.databaseRepo.get(constants_1.TABLES.STATUS, 'status', 'paid')];
             case 2:
+                paidStatus = _a.sent();
+                statusIds = [deliveredStatus.dimstatusid, paidStatus.dimstatusid];
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.ORDERS, { dimmerchantid: merchant_id.toString() }, undefined, 'datetime_paid_at', undefined, 'datetime_paid_at >= ? AND datetime_paid_at <= ? AND dimstatusid IN (?, ?)', __spreadArray([startOfCurrentYear, endOfCurrentMonth], statusIds, true))];
+            case 3:
                 yearlyOrders = _a.sent();
                 productSalesHistory = yearlyOrders.reduce(function (acc, order) {
                     if (!acc[order.dimcommerceproductid]) {
@@ -501,7 +524,7 @@ var productPerformance = function () { return __awaiter(void 0, void 0, void 0, 
                 }
                 rawQuery = "dimcommerceproductid IN (".concat(productIds.map(function () { return '?'; }).join(', '), ")");
                 return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.PRODUCTS, {}, undefined, 'created_date', undefined, rawQuery, productIds)];
-            case 3:
+            case 4:
                 products = _a.sent();
                 productMap = new Map();
                 products.forEach(function (product) {
@@ -919,9 +942,16 @@ function getImageUrl(imgPath) {
 function createPdfReport(sr, da, satm, sp, cgr, csg, result) {
     return __awaiter(this, void 0, void 0, function () {
         var templateHtml, template, templateData, htmlContent, options, file, pdfBuffer;
-        return __generator(this, function (_a) {
-            switch (_a.label) {
+        var _a, _b, _c, _d;
+        return __generator(this, function (_e) {
+            switch (_e.label) {
                 case 0:
+                    Handlebars.registerHelper('gt', function (a, b) {
+                        return a > b;
+                    });
+                    Handlebars.registerHelper('gte', function (a, b) {
+                        return a >= b;
+                    });
                     templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
                     template = Handlebars.compile(templateHtml);
                     templateData = {
@@ -944,8 +974,10 @@ function createPdfReport(sr, da, satm, sp, cgr, csg, result) {
                         open_disputes: da.open_disputes,
                         resolved_last_month: da.resolved_last_month,
                         mean_time_to_resolution: da.mean_time_to_resolution,
-                        best_product: satm.top_products_this_month[0][0],
-                        best_product_revenue: satm.top_products_this_month[0][1].toLocaleString(),
+                        best_product: ((_b = (_a = satm.top_products_this_month) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b[0]) || 'No product',
+                        best_product_revenue: ((_d = (_c = satm.top_products_this_month) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d[1])
+                            ? satm.top_products_this_month[0][1].toLocaleString()
+                            : 0,
                         responses_to_key_questions: result.responses_to_key_questions,
                         action_plan: result.action_plan,
                         ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
@@ -956,7 +988,7 @@ function createPdfReport(sr, da, satm, sp, cgr, csg, result) {
                     file = { content: htmlContent };
                     return [4 /*yield*/, pdf.generatePdf(file, options)];
                 case 1:
-                    pdfBuffer = _a.sent();
+                    pdfBuffer = _e.sent();
                     fs.writeFileSync('business_report.pdf', pdfBuffer);
                     console.log("PDF report generated successfully.");
                     return [2 /*return*/];
@@ -1103,7 +1135,7 @@ var getMerchants = function () { return __awaiter(void 0, void 0, void 0, functi
             case 1:
                 results = _a.sent();
                 console.log('Unique merchants with total transaction volume for the month:', results);
-                return [2 /*return*/];
+                return [2 /*return*/, results];
         }
     });
 }); };
@@ -1121,18 +1153,14 @@ var getMerchantById = function (merchant_id) { return __awaiter(void 0, void 0, 
 }); };
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var error_3;
+        var pp, error_3;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     _a.trys.push([0, 2, , 3]);
-                    // const merchant = await databaseRepo.getWhere<Transaction>(TABLES.TRANSACTIONS, {merchant_id: merchant_id});
-                    // console.log("m", merchant.reduce((sum, payment) => sum + parseFloat(payment.transaction_amount), 0))
-                    return [4 /*yield*/, getMerchants()];
+                    return [4 /*yield*/, productPerformance()];
                 case 1:
-                    // const merchant = await databaseRepo.getWhere<Transaction>(TABLES.TRANSACTIONS, {merchant_id: merchant_id});
-                    // console.log("m", merchant.reduce((sum, payment) => sum + parseFloat(payment.transaction_amount), 0))
-                    _a.sent();
+                    pp = _a.sent();
                     return [3 /*break*/, 3];
                 case 2:
                     error_3 = _a.sent();
