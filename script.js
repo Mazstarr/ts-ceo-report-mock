@@ -299,7 +299,41 @@ var customerSegmentation = function () { return __awaiter(void 0, void 0, void 0
         }
     });
 }); };
-// // Function to compare performance between current and last month
+// // Function to calculate success rate
+var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var today, startOfMonth, endOfMonth, transactions, totalPayments, totalVolume, successfulPayments, failedPayments, successRate;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                today = new Date();
+                startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
+                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ?', [startOfMonth, endOfMonth])];
+            case 1:
+                transactions = _a.sent();
+                totalPayments = transactions.length;
+                totalVolume = transactions.filter(function (payment) { return payment.successful; }).reduce(function (sum, payment) { return sum + parseFloat(payment.amount_transaction); }, 0);
+                successfulPayments = transactions.filter(function (payment) { return Boolean(payment.successful); }).length;
+                failedPayments = transactions.filter(function (payment) { return !Boolean(payment.successful); }).length;
+                successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
+                console.log("Success Rate Calculation:", {
+                    total_payments: totalPayments,
+                    successful_payments: successfulPayments,
+                    total_volume: totalVolume,
+                    failed_payments: failedPayments,
+                    success_rate: successRate
+                });
+                return [2 /*return*/, {
+                        total_payments: totalPayments,
+                        total_volume: totalVolume,
+                        successful_payments: successfulPayments,
+                        failed_payments: failedPayments,
+                        success_rate: successRate
+                    }];
+        }
+    });
+}); };
+// Function to compare performance between current and last month
 var performanceComparison = function () { return __awaiter(void 0, void 0, void 0, function () {
     var currentDate, currentYear, currentMonth, lastMonth, lastYear, startOfCurrentMonth, endOfCurrentMonth, startOfLastMonth, endOfLastMonth, currentMonthSalesData, lastMonthSalesData, currentMonthSales, lastMonthSales;
     return __generator(this, function (_a) {
@@ -329,40 +363,6 @@ var performanceComparison = function () { return __awaiter(void 0, void 0, void 
                 return [2 /*return*/, {
                         current_month_sales: currentMonthSales,
                         last_month_sales: lastMonthSales
-                    }];
-        }
-    });
-}); };
-// // Function to calculate success rate
-var calculateSuccessRate = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var today, startOfMonth, endOfMonth, transactions, totalPayments, totalVolume, successfulPayments, failedPayments, successRate;
-    return __generator(this, function (_a) {
-        switch (_a.label) {
-            case 0:
-                today = new Date();
-                startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0);
-                return [4 /*yield*/, db_connection_1.databaseRepo.getWhere(constants_1.TABLES.CUSTOMERS, { merchant_id: merchant_id }, undefined, 'datetime_created_at_local', undefined, 'datetime_created_at_local >= ? AND datetime_created_at_local <= ?', [startOfMonth, endOfMonth])];
-            case 1:
-                transactions = _a.sent();
-                totalPayments = transactions.length;
-                totalVolume = transactions.reduce(function (sum, payment) { return sum + parseFloat(payment.amount_transaction); }, 0);
-                successfulPayments = transactions.filter(function (payment) { return Boolean(payment.successful); }).length;
-                failedPayments = transactions.filter(function (payment) { return !Boolean(payment.successful); }).length;
-                successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
-                console.log("Success Rate Calculation:", {
-                    total_payments: totalPayments,
-                    successful_payments: successfulPayments,
-                    total_volume: totalVolume,
-                    failed_payments: failedPayments,
-                    success_rate: successRate
-                });
-                return [2 /*return*/, {
-                        total_payments: totalPayments,
-                        total_volume: totalVolume,
-                        successful_payments: successfulPayments,
-                        failed_payments: failedPayments,
-                        success_rate: successRate
                     }];
         }
     });
@@ -415,7 +415,7 @@ var disputeAnalysis = function () { return __awaiter(void 0, void 0, void 0, fun
                         : 0;
                     acc[category] = {
                         count: count,
-                        percentage: percentage.toFixed(2) // Format percentage to 2 decimal places
+                        percentage: percentage // Format percentage to 2 decimal places
                     };
                     return acc;
                 }, {});
@@ -600,6 +600,7 @@ function plotCustomerGrowth(customerGrowth) {
             });
             chart.setWidth(565);
             chart.setHeight(300);
+            chart.setDevicePixelRatio(2);
             return [2 /*return*/, chart.toDataUrl()];
         });
     });
@@ -747,6 +748,7 @@ function plotRevenue(revenueTrends) {
             });
             chart.setWidth(565);
             chart.setHeight(300);
+            chart.setDevicePixelRatio(2);
             return [2 /*return*/, chart.toDataUrl()];
         });
     });
@@ -806,6 +808,7 @@ function plotTransactions(revenueTrends) {
             });
             chart.setWidth(565);
             chart.setHeight(300);
+            chart.setDevicePixelRatio(2);
             return [2 /*return*/, chart.toDataUrl()];
         });
     });
@@ -839,6 +842,7 @@ function plotSubscriptionPerformance(subscriptionHistory) {
             });
             chart.setWidth(565);
             chart.setHeight(300);
+            chart.setDevicePixelRatio(2);
             return [2 /*return*/, chart.toDataUrl()];
         });
     });
@@ -906,6 +910,7 @@ function plotTopProducts(topProducts) {
             });
             chart.setWidth(565);
             chart.setHeight(300);
+            chart.setDevicePixelRatio(2);
             return [2 /*return*/, chart.toDataUrl()];
         });
     });
@@ -934,6 +939,7 @@ function plotPeakShoppingTimes(peakTimes) {
             });
             chart.setWidth(565);
             chart.setHeight(300);
+            chart.setDevicePixelRatio(2);
             return [2 /*return*/, chart.toDataUrl()];
         });
     });
@@ -955,6 +961,18 @@ function createPdfReport(sr, da, satm, sp, cgr, csg, result) {
                     });
                     Handlebars.registerHelper('gte', function (a, b) {
                         return a >= b;
+                    });
+                    Handlebars.registerHelper('not', function (value) {
+                        return !value;
+                    });
+                    Handlebars.registerHelper('not', function (value) {
+                        return !value;
+                    });
+                    Handlebars.registerHelper('and', function (a, b) {
+                        return a && b;
+                    });
+                    Handlebars.registerHelper('or', function (a, b) {
+                        return a || b;
                     });
                     templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
                     template = Handlebars.compile(templateHtml);
@@ -1176,7 +1194,7 @@ var getMerchantById = function (merchant_id) { return __awaiter(void 0, void 0, 
 // }
 // da: any, satm: any, sp: any, cgr: any, csg: any,
 // result: any
-function createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs) {
+function createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, pc, image_blobs, result) {
     return __awaiter(this, void 0, void 0, function () {
         var templateHtml, pieImagePath, pieImageBase64, arrowImagePath, arrowImageBase64, peakShoppingTimeStats, templateData, template, htmlContent, browser, page, fontDir;
         var _a, _b, _c, _d;
@@ -1190,6 +1208,18 @@ function createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs) {
                     });
                     Handlebars.registerHelper('gte', function (a, b) {
                         return a >= b;
+                    });
+                    Handlebars.registerHelper('not', function (value) {
+                        return !value;
+                    });
+                    Handlebars.registerHelper('not', function (value) {
+                        return !value;
+                    });
+                    Handlebars.registerHelper('and', function (a, b) {
+                        return a && b;
+                    });
+                    Handlebars.registerHelper('or', function (a, b) {
+                        return a || b;
                     });
                     pieImagePath = path.join(__dirname, 'assets/images/pie.svg');
                     pieImageBase64 = fs.readFileSync(pieImagePath, { encoding: 'base64' });
@@ -1244,11 +1274,23 @@ function createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs) {
                         open_disputes: da.open_disputes,
                         resolved_this_month: da.resolved_this_month,
                         mean_time_to_resolution: da.mean_time_to_resolution,
+                        manually_resolved_dispute_percentage: da.resolution_percentages['Merchant-Accepted'].percentage.toFixed(2),
+                        auto_resolved_dispute_percentage: Object.entries(da.resolution_percentages)
+                            .filter(function (_a) {
+                            var key = _a[0];
+                            return key !== 'Merchant-Accepted';
+                        }) // Exclude 'Merchant-Accepted'
+                            .reduce(function (sum, _a) {
+                            var _ = _a[0], value = _a[1];
+                            return sum + value.percentage;
+                        }, 0).toFixed(2),
+                        responses_to_key_questions: result.responses_to_key_questions,
+                        ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
+                        ceo_summary_paragraphs: result.ceo_summary_paragraphs,
+                        revenue_difference: Math.abs(pc.current_month_sales - pc.last_month_sales).toLocaleString(),
+                        revenue_increase: pc.current_month_sales > pc.last_month_sales,
+                        action_plan: result.action_plan,
                         // revenue_sales_trend: getImageUrl('./revenue_and_sales_trends.png'),
-                        // responses_to_key_questions: result.responses_to_key_questions,
-                        // action_plan: result.action_plan,
-                        // ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
-                        // ceo_summary_paragraphs: result.ceo_summary_paragraphs
                     };
                     template = Handlebars.compile(templateHtml);
                     htmlContent = template(templateData);
@@ -1289,11 +1331,11 @@ function createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs) {
 }
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var sr, rst, satm, sp, csg, cgr, psp, da, image_blobs, _a, totalRevenueTrendsPlot, totalTransactionTrendsPlot, topProductsPlot, subscriptionPerformancePlot, customerSegmentationPie, customerGrowthPlot, peakShoppingTimesPlot, error_3;
+        var sr, rst, satm, sp, csg, cgr, psp, da, pp, pc, image_blobs, _a, totalRevenueTrendsPlot, totalTransactionTrendsPlot, topProductsPlot, subscriptionPerformancePlot, customerSegmentationPie, customerGrowthPlot, peakShoppingTimesPlot, result, error_3;
         return __generator(this, function (_b) {
             switch (_b.label) {
                 case 0:
-                    _b.trys.push([0, 12, , 13]);
+                    _b.trys.push([0, 15, , 16]);
                     return [4 /*yield*/, calculateSuccessRate()];
                 case 1:
                     sr = _b.sent();
@@ -1318,12 +1360,14 @@ function main() {
                     return [4 /*yield*/, disputeAnalysis()];
                 case 8:
                     da = _b.sent();
-                    // const pp = await productPerformance();
-                    // const pc = await performanceComparison()
-                    return [4 /*yield*/, plotRevenue(rst.revenue_trends)];
+                    return [4 /*yield*/, productPerformance()];
                 case 9:
-                    // const pp = await productPerformance();
-                    // const pc = await performanceComparison()
+                    pp = _b.sent();
+                    return [4 /*yield*/, performanceComparison()];
+                case 10:
+                    pc = _b.sent();
+                    return [4 /*yield*/, plotRevenue(rst.revenue_trends)];
+                case 11:
                     _b.sent();
                     image_blobs = {};
                     return [4 /*yield*/, Promise.all([
@@ -1337,7 +1381,7 @@ function main() {
                             // plotRevenueAndSales(rst.revenue_trends),
                             // plotProductPerformance(pp.product_sales_history),
                         ])];
-                case 10:
+                case 12:
                     _a = _b.sent(), totalRevenueTrendsPlot = _a[0], totalTransactionTrendsPlot = _a[1], topProductsPlot = _a[2], subscriptionPerformancePlot = _a[3], customerSegmentationPie = _a[4], customerGrowthPlot = _a[5], peakShoppingTimesPlot = _a[6];
                     // Assign plots to image_blobs
                     image_blobs['total_revenue_trends'] = totalRevenueTrendsPlot;
@@ -1347,25 +1391,18 @@ function main() {
                     image_blobs['customer_segmentation_pie'] = customerSegmentationPie;
                     image_blobs['customer_growth'] = customerGrowthPlot;
                     image_blobs['peak_shopping_times'] = peakShoppingTimesPlot;
-                    //   image_blobs['revenue_and_sales_trends'] = revenueAndSalesPlot;
-                    //   image_blobs['product_performance'] = productPerformancePlot;
-                    // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-                    // await createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result));
-                    // da, satm, sp, cgr, csg,
-                    return [4 /*yield*/, createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs)];
-                case 11:
-                    //   image_blobs['revenue_and_sales_trends'] = revenueAndSalesPlot;
-                    //   image_blobs['product_performance'] = productPerformancePlot;
-                    // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-                    // await createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result));
-                    // da, satm, sp, cgr, csg,
+                    return [4 /*yield*/, generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr)];
+                case 13:
+                    result = _b.sent();
+                    return [4 /*yield*/, createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, pc, image_blobs, JSON.parse(result))];
+                case 14:
                     _b.sent();
-                    return [3 /*break*/, 13];
-                case 12:
+                    return [3 /*break*/, 16];
+                case 15:
                     error_3 = _b.sent();
                     console.error("Error in analysis functions:", error_3);
-                    return [3 /*break*/, 13];
-                case 13: return [2 /*return*/];
+                    return [3 /*break*/, 16];
+                case 16: return [2 /*return*/];
             }
         });
     });

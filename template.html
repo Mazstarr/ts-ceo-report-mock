@@ -202,7 +202,8 @@
 
         .small-text {
             font-family: 'Graphik', "Poppins", sans-serif;
-            font-size: 10px;
+            font-size: 12px;
+            line-height: 14px;
         }
 
         .chart-image {
@@ -246,7 +247,7 @@
 
         .dispute-metrics {
             display: flex;
-            gap: 40px;
+            gap: 60px;
             color: var(--secondary-color);
             margin: 15px 0 25px 0px;
         }
@@ -265,8 +266,87 @@
 
         }
 
+        .payments-method {
+            margin: 40px 0px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .qa {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .question {
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 18px;
+            margin-bottom: 5px;
+        }
+
+        .action-plan-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            border-radius: 8px;
+            padding: 8px 16px;
+        }
+
+
+        .action-plan-table td {
+            border: 1px solid #D9D9D9;
+            color: #333B43;
+            font-family: 'Graphik', "Poppins", sans-serif;
+            font-size: 12px;
+            line-height: 14px;
+            padding: 16px 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .action-plan-table th {
+            background-color: var(--secondary-color);
+            color: #E0F3FD;
+            font-weight: bold;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .action-plan-table ul {
+            margin: 0;
+            padding-left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            list-style-type: none;
+        }
+
+        .action-plan-table thead {
+    display: table-header-group;
+    border-radius: 8px 0px 0px 8px;
+}
         .page-break {
             page-break-before: always;
+        }
+
+        .dispute {
+            height: 100%;
+            background-color: #FFAD00;
+            /* default background */
+        }
+
+        #manual {
+            background-color: var(--secondary-color);
+        }
+
+        .dispute {
+            width: var(--dispute-width);
         }
 
         @media print {
@@ -289,6 +369,8 @@
             .avoid-page-break {
                 page-break-inside: avoid;
             }
+
+         
         }
     </style>
 </head>
@@ -344,8 +426,14 @@
                 <div class="title">PRODUCTS & REVENUE</div>
                 <div class="section">
                     <h4 class="sub-heading">Revenue Trend</h4>
-                    <p class="small-text" style="color: var(--secondary-color);">This is a summary of your revenue
-                        performance over time.</p>
+                    <p class="small-text" style="color: var(--secondary-color);"> This is a summary of your revenue
+                        performance over time. You made
+                        {{#if revenue_increase}}
+                        {{ revenue_difference }} more
+                        {{else}}
+                        {{ revenue_difference }} less
+                        {{/if}}
+                        compared to last month.</p>
                     <img src="{{ revenue_trend_image }}" alt="Revenue Trend" class="chart-image" />
                 </div>
             </div>
@@ -382,10 +470,10 @@
             </div>
             {{/if}}
         </div>
+        <div class="page-break"></div>
 
         <!-- Page break logic for when products and subscriptions both exist -->
         {{#if (and best_product_revenue total_subscriptions)}}
-        <div class="page-break"></div>
         <div class="page data-page">
             <div class="section">
                 <h4 class="sub-heading">Subscription Performance</h4>
@@ -396,6 +484,8 @@
                 <img src="{{ subscription_performance_image }}" alt="Subscription Performance" class="chart-image" />
             </div>
         </div>
+        <div class="page-break"></div>
+
         {{/if}}
 
         <div class="page data-page">
@@ -406,13 +496,13 @@
                     <p class="small-text" style="color: var(--secondary-color);">
                         {{#if new_customers}}
                         {{#if (gt new_customers 0)}}
-                        Just last month, you gained {{ new_customers }} new customers! Fantastic
+                        Just this month, you gained {{ new_customers }} new customers! Fantastic
                         work bringing in new business!
                         {{else}}
-                        You didn't gain any new customers last month. Let's strategize on how to attract more customers!
+                        You didn't gain any new customers this month. Let's strategize on how to attract more customers!
                         {{/if}}
                         {{else}}
-                        We don't have customer growth data for last month. Consider monitoring this metric for future
+                        We don't have customer growth data for this month. Consider monitoring this metric for future
                         insights.
                         {{/if}}
                     </p>
@@ -471,17 +561,12 @@
                 <div class="title">HOW WE HELPED</div>
                 <div class="section">
                     <h4 class="sub-heading">Disputes</h4>
-                    <!-- {{#if resolved_this_month}}
-                    <p class="small-text" style="color: var(--secondary-color);">A total of {{ resolved_this_month }} disputes were resolved this month, They were settled in less than {{ mean_time_to_resolution }} days.</p>
-                    {{else}}
-                    <p class="small-text" style="color: var(--secondary-color);">No disputes was resolved this month. Great
-                        job keeping things smooth!</p>
-                    {{/if}} -->
+                    {{#if resolved_this_month}}
                     <p class="small-text" style="color: var(--secondary-color);">A total of {{ resolved_this_month }}
                         disputes were resolved this month, They were settled in less than {{ mean_time_to_resolution }}
                         days.</p>
                     <div class="dispute-metrics">
-                        
+
                         <div>
                             <h3>{{ resolved_this_month }}</h3>
                             <p class="small-text">Disputes Resolved This Month</p>
@@ -501,22 +586,31 @@
                                 <div class="seg-dot" style="background-color: #011B33;"></div>
                                 <span>Manually Resolved</span>
                             </div>
-                            <span>73.8%</span>
+                            <span>{{ manually_resolved_dispute_percentage }}%</span>
                         </div>
                         <div class="pie-segment">
                             <div>
                                 <div class="seg-dot" style="background-color: #FFAD00;"></div>
                                 <span>Automatically Resolved</span>
                             </div>
-                            <span>26.2%</span>
+                            <span>{{ auto_resolved_dispute_percentage }}%</span>
                         </div>
                         <div class="dispute-chart">
-                            <div id="manual"
-                                style="width: 73.8%; height: 100%; background-color: var(--secondary-color);"></div>
-                            <div id="auto" style="width: 26.2%; height: 100%; background-color: #FFAD00;"></div>
+
+                            <div id="manual" class="dispute"
+                                style="--dispute-width: {{ manually_resolved_dispute_percentage }}%; background-color: var(--secondary-color);">
+                            </div>
+                            <div id="auto" class="dispute"
+                                style="--dispute-width: {{ auto_resolved_dispute_percentage }}%;"></div>
+
                         </div>
 
                     </div>
+                    {{else}}
+                    <p class="small-text" style="color: var(--secondary-color);">No disputes was resolved this month.
+                        Great
+                        job keeping things smooth!</p>
+                    {{/if}}
 
                 </div>
             </div>
@@ -528,7 +622,114 @@
             </div>
         </div>
         <div class="page-break"></div>
+        <div class="page data-page">
+            <div class="section">
+                <h4 class="sub-heading">Top Payment Methods</h4>
+                <p class="small-text" style="color: var(--secondary-color);"> Bank Transfer was your customers'
+                    preferred payment method</p>
+                <div class="payments-method">
+                    <!-- Remember to change to payment method pie chart -->
+                    <img src="{{ customer_segmentation_image }}" alt="Payment method" class="chart-image"
+                        style="width: 200px; height: 200px;" />
+                    <div style="width: 60%; display: flex; flex-direction: column; gap: 15px;">
+                        <div class="pie-segment">
+                            <div>
+                                <div class="seg-dot" style="background-color: #011B33;"></div>
+                                <span style="white-space: nowrap;">Bank Transfer</span>
+                            </div>
+                            <span>78%</span>
+                        </div>
+                        <div class="pie-segment">
+                            <div>
+                                <div class="seg-dot" style="background-color: #03649A;"></div>
+                                <span style="white-space: nowrap;">Pay with Bank</span>
+                            </div>
+                            <span>8.6%</span>
+                        </div>
+                        <div class="pie-segment">
+                            <div>
+                                <div class="seg-dot" style="background-color: #09A5DB;"></div>
+                                <span style="white-space: nowrap;">Card</span>
+                            </div>
+                            <span>1.1%</span>
+                        </div>
+                        <div class="pie-segment">
+                            <div>
+                                <div class="seg-dot" style="background-color: #FFAD00;"></div>
+                                <span style="white-space: nowrap;">USSD</span>
+                            </div>
+                            <span>0.26%</span>
+                        </div>
+
+                    </div>
+                </div>
+                <h4 class="sub-heading" style="text-transform: none;">88% of Merchants in your industry use “Pay with
+                    bank” channel. Here's how you
+                    can improve</h4>
+                <p class="small-text" style="color: #333B43"> [Dummy Text] Revenue trends indicate a
+                    strong upward trajectory with peaks during weekends and dip mid-week. Seasonal promotions boost
+                    end-of-quarter figures significantly. [1] This suggests a reliable pattern that can be leveraged for
+                    forecasting.</p>
+            </div>
+        </div>
+        <div class="page-break"></div>
+        <div class="page data-page" style="color: #333B43;">
+            <div>
+                <div class="title">AI POWERED INSIGHTS</div>
+                <p class="small-text"> We at Paystack pride ourselves in
+                    providing the best service to our merchants, and are currently working on creating AI systems to
+                    understand your payment data and provide insights to elevate you.</p>
+            </div>
+            <div class="qa">
+                <h4 class="sub-heading" style="text-transform: none;">Some Key Q&A from your data</h4>
+                {{#each responses_to_key_questions}}
+                <div>
+                    <p class="question">{{question}}</p>
+                    <p class="small-text">{{answer}}</p>
+                </div>
+                {{/each}}
+            </div>
+            <div>
+                <h4 class="sub-heading">Action Plan</h4>
+                <table class="action-plan-table">
+                    <thead>
+                        <tr>
+                            <th>Plan</th>
+                            <th>Relevance</th>
+                            <th>Gains</th>
+                            <th>Steps</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#each action_plan}}
+                        <tr>
+                            <td>{{action_title}}</td>
+                            <td>{{reason_why_relevance}}</td>
+                            <td>{{reason_why_gains}}</td>
+                            <td>
+                                <ul>
+                                    {{#each steps_to_start}}
+                                    <li>{{this}}</li>
+                                    {{/each}}
+                                </ul>
+                            </td>
+                        </tr>
+                        {{/each}}
+                    </tbody>
+                </table>
+
+            </div>
+            <div>
+                <h4 class="sub-heading">{{ceo_summary_paragraphs_title}}</h4>
+                <p class="small-text"> {{ceo_summary_paragraphs}}</p>
+            </div>
+        </div>
+        <div class="page-break"></div>
     </div>
 </body>
+
+<script>
+
+</script>
 
 </html>

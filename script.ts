@@ -332,7 +332,49 @@ const customerSegmentation = async () => {
 };
 
 
-// // Function to compare performance between current and last month
+// // Function to calculate success rate
+const calculateSuccessRate = async () => {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
+
+
+    // Fetch transactions for last month
+    const transactions = await databaseRepo.getWhere<Customer>(
+        TABLES.CUSTOMERS,
+        { merchant_id: merchant_id },
+        undefined,
+        'datetime_created_at_local',
+        undefined,
+        'datetime_created_at_local >= ? AND datetime_created_at_local <= ?',
+        [startOfMonth, endOfMonth]
+    );
+
+    const totalPayments = transactions.length;
+    const totalVolume = transactions.filter(payment => payment.successful).reduce((sum, payment) => sum + parseFloat(payment.amount_transaction), 0);
+    const successfulPayments = transactions.filter(payment => Boolean(payment.successful)).length;
+    const failedPayments = transactions.filter(payment => !Boolean(payment.successful)).length;
+
+    const successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
+
+    console.log("Success Rate Calculation:", {
+        total_payments: totalPayments,
+        successful_payments: successfulPayments,
+        total_volume: totalVolume,
+        failed_payments: failedPayments,
+        success_rate: successRate
+    });
+
+    return {
+        total_payments: totalPayments,
+        total_volume: totalVolume,
+        successful_payments: successfulPayments,
+        failed_payments: failedPayments,
+        success_rate: successRate
+    };
+};
+
+// Function to compare performance between current and last month
 const performanceComparison = async () => {
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
@@ -380,49 +422,6 @@ const performanceComparison = async () => {
     return {
         current_month_sales: currentMonthSales,
         last_month_sales: lastMonthSales
-    };
-};
-
-
-// // Function to calculate success rate
-const calculateSuccessRate = async () => {
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1); //remember to remove -1 to get for current month and not last month
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() - 1 + 1, 0); //remember to remove -1 to get for current month and not last month
-
-
-    // Fetch transactions for last month
-    const transactions = await databaseRepo.getWhere<Customer>(
-        TABLES.CUSTOMERS,
-        { merchant_id: merchant_id },
-        undefined,
-        'datetime_created_at_local',
-        undefined,
-        'datetime_created_at_local >= ? AND datetime_created_at_local <= ?',
-        [startOfMonth, endOfMonth]
-    );
-
-    const totalPayments = transactions.length;
-    const totalVolume = transactions.reduce((sum, payment) => sum + parseFloat(payment.amount_transaction), 0);
-    const successfulPayments = transactions.filter(payment => Boolean(payment.successful)).length;
-    const failedPayments = transactions.filter(payment => !Boolean(payment.successful)).length;
-
-    const successRate = totalPayments > 0 ? (successfulPayments / totalPayments) * 100 : 0;
-
-    console.log("Success Rate Calculation:", {
-        total_payments: totalPayments,
-        successful_payments: successfulPayments,
-        total_volume: totalVolume,
-        failed_payments: failedPayments,
-        success_rate: successRate
-    });
-
-    return {
-        total_payments: totalPayments,
-        total_volume: totalVolume,
-        successful_payments: successfulPayments,
-        failed_payments: failedPayments,
-        success_rate: successRate
     };
 };
 
@@ -482,14 +481,15 @@ const disputeAnalysis = async () => {
     const resolutionPercentages = resolutionCategories.reduce((acc, category) => {
         const count = resolvedDisputesForTheMonth.filter(dispute => dispute.dispute_resolution === category).length;
         const percentage = resolvedDisputesForTheMonth.length > 0
-        ? (count / resolvedDisputesForTheMonth.length) * 100
-        : 0;
+            ? (count / resolvedDisputesForTheMonth.length) * 100
+            : 0;
+       
         acc[category] = {
             count,
-            percentage: percentage.toFixed(2) // Format percentage to 2 decimal places
+            percentage: percentage // Format percentage to 2 decimal places
         };
         return acc;
-    }, {} as Record<string, { count: number; percentage: string }>);
+    }, {} as Record<string, { count: number; percentage: number }>);
 
     console.log("\nNumber of Open Disputes: ", disputesOpen);
     console.log("Number of Disputes Resolved in the Month: ", disputesResolved);
@@ -702,7 +702,7 @@ async function plotCustomerGrowth(customerGrowth: Record<string, number>) {
 
     chart.setWidth(565);
     chart.setHeight(300);
-
+    chart.setDevicePixelRatio(2);
     return chart.toDataUrl();
 }
 
@@ -735,8 +735,8 @@ async function plotCustomerSegmentationPie(segmentationData: { new_customers: nu
     });
 
     chart.setWidth(153);
-    chart.setHeight(153); 
-    chart.setDevicePixelRatio(2); 
+    chart.setHeight(153);
+    chart.setDevicePixelRatio(2);
     return chart.toDataUrl();
 }
 
@@ -838,6 +838,7 @@ async function plotRevenue(revenueTrends: Record<string, { total_revenue: number
 
     chart.setWidth(565);
     chart.setHeight(300);
+    chart.setDevicePixelRatio(2);
 
     return chart.toDataUrl();
 }
@@ -897,7 +898,7 @@ async function plotTransactions(revenueTrends: Record<string, { total_transactio
 
     chart.setWidth(565);
     chart.setHeight(300);
-
+    chart.setDevicePixelRatio(2);
     return chart.toDataUrl();
 }
 
@@ -928,7 +929,7 @@ async function plotSubscriptionPerformance(subscriptionHistory: Record<string, {
 
     chart.setWidth(565);
     chart.setHeight(300);
-
+    chart.setDevicePixelRatio(2);
     return chart.toDataUrl();
 }
 
@@ -988,7 +989,7 @@ async function plotTopProducts(topProducts: [string, number][]) {
     });
     chart.setWidth(565);
     chart.setHeight(300);
-
+    chart.setDevicePixelRatio(2);
     return chart.toDataUrl();
 }
 
@@ -1015,7 +1016,7 @@ async function plotPeakShoppingTimes(peakTimes: Record<string, number>) {
     });
     chart.setWidth(565);
     chart.setHeight(300);
-
+    chart.setDevicePixelRatio(2);
     return chart.toDataUrl();
 }
 
@@ -1027,13 +1028,30 @@ function getImageUrl(imgPath: string) {
 
 async function createPdfReport(sr: any, da: any, satm: any, sp: any, cgr: any, csg: any, result: any) {
 
-    Handlebars.registerHelper('gt', function (a: number, b: number) {
+    Handlebars.registerHelper('gt', (a: number, b: number) => {
         return a > b;
     });
 
-    Handlebars.registerHelper('gte', function (a: number, b: number) {
+    Handlebars.registerHelper('gte', (a: number, b: number) => {
         return a >= b;
     });
+
+    Handlebars.registerHelper('not', (value) => {
+        return !value;
+    });
+
+    Handlebars.registerHelper('not', (value: any) => {
+        return !value;
+    });
+
+    Handlebars.registerHelper('and', (a: any, b: any) => {
+        return a && b;
+    });
+
+    Handlebars.registerHelper('or', (a: any, b: any) => {
+        return a || b;
+    });
+
     const templateHtml = fs.readFileSync('reportTemplate.html', 'utf-8');
     const template = Handlebars.compile(templateHtml);
     const templateData = {
@@ -1278,18 +1296,35 @@ const getMerchantById = async (merchant_id: number) => {
 // da: any, satm: any, sp: any, cgr: any, csg: any,
 // result: any
 
-async function createPdfReportNew(sr: any, da:any, satm: any, sp: any, cgr: any, csg: any, psp: any, image_blobs: any) {
+async function createPdfReportNew(sr: any, da: any, satm: any, sp: any, cgr: any, csg: any, psp: any, pc: any, image_blobs: any, result: any) {
     // Read the HTML template
     const templateHtml = fs.readFileSync('template.html', 'utf-8');
 
     // Register Handlebars helpers
-    Handlebars.registerHelper('gt', function (a, b) {
+    Handlebars.registerHelper('gt', (a: number, b: number) => {
         return a > b;
     });
 
-    Handlebars.registerHelper('gte', function (a, b) {
+    Handlebars.registerHelper('gte', (a: number, b: number) => {
         return a >= b;
     });
+
+    Handlebars.registerHelper('not', (value) => {
+        return !value;
+    });
+
+    Handlebars.registerHelper('not', (value: any) => {
+        return !value;
+    });
+
+    Handlebars.registerHelper('and', (a: any, b: any) => {
+        return a && b;
+    });
+
+    Handlebars.registerHelper('or', (a: any, b: any) => {
+        return a || b;
+    });
+
 
     // Read the pie chart image and convert it to base64
     const pieImagePath = path.join(__dirname, 'assets/images/pie.svg');
@@ -1353,12 +1388,20 @@ async function createPdfReportNew(sr: any, da:any, satm: any, sp: any, cgr: any,
         open_disputes: da.open_disputes,
         resolved_this_month: da.resolved_this_month,
         mean_time_to_resolution: da.mean_time_to_resolution,
+        manually_resolved_dispute_percentage: da.resolution_percentages['Merchant-Accepted'].percentage.toFixed(2),
+        auto_resolved_dispute_percentage: Object.entries(da.resolution_percentages as Record<string, {count:number, percentage: number }>)
+        .filter(([key]) => key !== 'Merchant-Accepted') // Exclude 'Merchant-Accepted'
+        .reduce((sum, [_, value]) => sum + value.percentage, 0).toFixed(2),
+        responses_to_key_questions: result.responses_to_key_questions,
+        ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
+        ceo_summary_paragraphs: result.ceo_summary_paragraphs,
+        revenue_difference: Math.abs(pc.current_month_sales - pc.last_month_sales).toLocaleString(),
+        revenue_increase: pc.current_month_sales > pc.last_month_sales,
+        action_plan: result.action_plan,
         // revenue_sales_trend: getImageUrl('./revenue_and_sales_trends.png'),
-        // responses_to_key_questions: result.responses_to_key_questions,
-        // action_plan: result.action_plan,
-        // ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
-        // ceo_summary_paragraphs: result.ceo_summary_paragraphs
     };
+
+    
 
     // Compile the Handlebars template
     const template = Handlebars.compile(templateHtml);
@@ -1439,8 +1482,8 @@ async function main() {
         const cgr = await customerGrowthAndRetention();
         const psp = await peakShoppingTimes()
         const da = await disputeAnalysis();
-        // const pp = await productPerformance();
-        // const pc = await performanceComparison()
+        const pp = await productPerformance();
+        const pc = await performanceComparison()
         await plotRevenue(rst.revenue_trends);
         const image_blobs = {};
         const [
@@ -1477,10 +1520,8 @@ async function main() {
         //   image_blobs['product_performance'] = productPerformancePlot;
 
 
-        // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-        // await createPdfReport(sr, da, satm, sp, cgr, csg, JSON.parse(result));
-        // da, satm, sp, cgr, csg,
-        await createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, image_blobs);
+        const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+        await createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, pc, image_blobs, JSON.parse(result));
     } catch (error) {
         console.error("Error in analysis functions:", error);
     }
