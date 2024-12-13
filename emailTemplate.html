@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <title>Simple Email Template</title>
+  <style>
+    /* General Styles */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f4;
+      color: #191919;
+      font-family: 'Poppins', Arial, sans-serif;
+    }
+
+    table {
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .content {
+      padding: 20px 40px;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+
+    a {
+      text-decoration: none;
+    }
+
+    /* Mobile Responsiveness */
+    @media screen and (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+
+      .content {
+        padding: 15px;
+      }
+
+      .button {
+        display: block !important;
+        width: 100% !important;
+        padding: 14px 0 !important;
+        text-align: center !important;
+        font-size: 16px !important;
+      }
+
+      h1 {
+        font-size: 24px !important;
+      }
+
+      p {
+        font-size: 16px !important;
+      }
+
+      .image {
+        height: 250px !important;
+        object-fit: cover;
+        object-position: center;
+        background-image: url("/ass") !important;
+        width: 100% !important;
+      }
+
+      #logo {
+        width: 150px;
+        height: 40px;
+      }
+
+      #footer {
+        font-size: 8px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <table cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f4f4">
+    <tr>
+      <td align="center" class="container" style="padding: 20px 0;">
+
+        <!-- Main Email Container -->
+        <table cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="overflow: hidden;">
+
+          <!-- Header Section -->
+          <tr>
+            <td align="center" class="content">
+              <img id="logo"
+                src="http://cdn.mcauto-images-production.sendgrid.net/849c5e6cdbff9ea0/213cd04e-9a2a-473e-92db-0121d3f68f7d/900x207.png"
+                alt="paystack logo" width="230px" height="50px" style="margin-bottom: 20px;">
+              <h1 style="margin: 0; font-size: 18px; font-weight: 700; color: #939393;">MONTHLY CEO REPORT</h1>
+              <p style="margin: 10px 0; font-size: 38px; font-weight: 700;">And It's a Wrap!</p>
+              <span style="margin: 0; font-size: 14px; color: #939393; text-align: center;">
+                Your personalized business insights for {{month}} have arrived, crafted to give you both a comprehensive
+                view and an engaging experience of {{company_name}}'s performance.
+              </span>
+            </td>
+          </tr>
+
+          <!-- Body Section -->
+          <tr>
+            <td align="center" class="content">
+              <div
+                style="margin-bottom: 20px; width: 100%; height: 340px; border-radius: 8px; background-repeat: none; background-position: center; background-size: cover; background-image: url(http://cdn.mcauto-images-production.sendgrid.net/849c5e6cdbff9ea0/2c7f169a-9e2e-4f4c-812e-3cf02113ad56/1728x1117.png);"
+                class="image"></div>
+              <p style="margin: 10px 0; font-size: 26px; font-weight: 700;">Your Business Wrapped</p>
+              <span style="margin: 0; font-size: 14px; color: #939393; text-align: center;">
+                Experience an interactive journey through your key metrics and milestone moments - think Spotify
+                Wrapped, but for your business performance.
+              </span>
+              <p style="text-align: center; margin: 30px 0;">
+                <a href="{{wrapped_link}}"
+                  style="background-color: #00C3F7; color: #ffffff; padding: 14px 40px; text-decoration: none; border-radius: 45px; font-weight: 600; font-size: 14px; display: inline-block;"
+                  class="button">
+                  Let’s Go!
+                </a>
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" class="content">
+              <div
+                style="margin-bottom: 20px; width: 100%; height: 100px; border: 2px dashed #00C3F7; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                <p style="margin: 0; font-size: 16px; color: #555555;">
+                  📎 <strong>PDF Report Attached</strong>
+                </p>
+              </div>
+
+              <p style="margin: 10px 0; font-size: 26px; font-weight: 700;">Comprehensive Report</p>
+
+              <span style="margin: 0; font-size: 14px; color: #939393; text-align: center; display: block;">
+                Uncover extensive insights and a deep dive into your business performance with our detailed monthly
+                report.
+              </span>
+
+              <p style="text-align: center; margin: 30px 0;">
+                <a href="{{report_link}}" download="Merchant_Report.pdf"
+                  style="background-color: #00C3F7; color: #ffffff; padding: 14px 40px; text-decoration: none; border-radius: 45px; font-weight: 600; font-size: 14px; display: inline-block;"
+                  class="button">
+                  Download Report
+                </a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer Section -->
+          <tr>
+            <td id="footer" align="center" bgcolor="#eeeeee" style="padding: 10px; font-size: 12px; color: #777777;">
+              <p style="margin: 0;">&copy; 2024 Our Company. All rights reserved.</p>
+              <p style="margin: 0;">
+                <a href="#" style="color: #011b33; text-decoration: none;">Privacy Policy</a> |
+                <a href="#" style="color: #011b33; text-decoration: none;">Contact Us</a> |
+                <a href="#" style="color: #011b33; text-decoration: none;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+
+</html>

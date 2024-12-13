@@ -7,7 +7,7 @@ const pdf = require('html-pdf-node');
 const puppeteer = require('puppeteer');
 
 
-import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays } from 'date-fns';
+import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays, intervalToDuration, formatDuration } from 'date-fns';
 import * as fs from 'fs';
 import { writeFileSync } from 'fs';
 import axios from 'axios';
@@ -19,7 +19,7 @@ import { Customer, Dispute, Order, Product, Status, Subscription, Transaction } 
 
 
 // const merchant_id = 151697;
-const merchant_id = 100043;
+const merchant_id = 960265;
 
 
 // Function to analyze revenue and sales trends over the past year
@@ -147,6 +147,165 @@ const customerGrowthAndRetention = async () => {
 
 
 
+const customerGrowthAndRetentionNew = async () => {
+    const CURRENT_MONTH = 9;
+    const today = new Date();
+    const startOfLastYear = new Date(today.getFullYear() - 1, CURRENT_MONTH, 1); // 12 months ago
+    const startOfLast3Months = new Date(today.getFullYear(), CURRENT_MONTH - 3, 1); // 3 months ago
+    const endOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH + 1, 0); // End of current month
+    const startOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH, 1); // Start of current month
+  
+    // Query to get the most recent record for each customer within the last 12 months
+    const rawQuery = `
+      WITH ranked_customers AS (
+        SELECT *, 
+          ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num
+        FROM ??
+        WHERE ?? = ? AND customer_created_at >= ? AND customer_created_at <= ?
+      )
+      SELECT dimcustomerid, customer_created_at, datetime_created_at_local, merchant_id
+      FROM ranked_customers
+      WHERE row_num = 1
+    `;
+  
+    const params = [
+      TABLES.CUSTOMERS,
+      'merchant_id',
+      merchant_id,
+      startOfLastYear.toISOString(),
+      endOfCurrentMonth.toISOString(),
+    ];
+  
+    // Fetch the deduplicated customers within the last year
+    const customers = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
+  
+    // Group customers by the month they were added (customer growth)
+    const customerGrowth = customers.reduce((acc, customer) => {
+      const addedOnMonth = format(customer.customer_created_at, 'yyyy-MM');
+      if (!acc[addedOnMonth]) {
+        acc[addedOnMonth] = 0;
+      }
+      acc[addedOnMonth]++;
+      return acc;
+    }, {} as Record<string, number>);
+  
+    // Debug: Log total customer counts
+    console.log("Total Customers in the last 12 months:", customers.length);
+  
+    // Identify returning customers:
+    // - Customers created before the current month
+    // - Most recent transaction within the current month (using datetime_created_at_local)
+    const returningCustomers = customers.filter(
+      (customer) =>
+        customer.customer_created_at < startOfCurrentMonth &&
+        customer.datetime_created_at_local >= startOfLast3Months &&
+        customer.datetime_created_at_local <= endOfCurrentMonth
+    ).length;
+  
+    // Debug: Log returning customers count
+    console.log("Returning Customers in the current month:", returningCustomers);
+  
+    // Count customers who were created before the current month
+    const customersBeforePeriod = customers.filter(
+      (customer) => customer.customer_created_at < startOfCurrentMonth
+    ).length;
+  
+    // Debug: Log customers before the current period
+    console.log("Total Customers Before Current Month:", customersBeforePeriod);
+  
+    // Calculate retention rate
+    const retentionRate =
+      customersBeforePeriod > 0 ? (returningCustomers / customersBeforePeriod) * 100 : 0;
+  
+    console.log('\nCustomer Growth (New Customers per Month):');
+    console.log(customerGrowth);
+    console.log(`\nCustomer Retention Rate: ${retentionRate.toFixed(2)}%`);
+  
+    return {
+      customers_gained_each_month: customerGrowth,
+      retention_rate_over_last_year: retentionRate.toFixed(2),
+    };
+  };
+  
+  const customerGrowthAndRetentionNewest = async () => {
+    const CURRENT_MONTH = 9; // October (0-indexed)
+    const today = new Date();
+  
+    // Define date ranges
+    const startOfLast3Months = new Date(today.getFullYear(), CURRENT_MONTH - 2, 1); // August 1, 2024
+    const endOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH + 1, 0); // October 31, 2024
+    const startOfCurrentPeriod = new Date(today.getFullYear(), CURRENT_MONTH - 2, 1); // August 1, 2024
+    const endOfCurrentPeriod = endOfCurrentMonth; // October 31, 2024
+  
+    const startOfPrevious3Months = new Date(today.getFullYear(), CURRENT_MONTH - 5, 1); // May 1, 2024
+    const startOfPrevious6Months = new Date(today.getFullYear(), CURRENT_MONTH - 8, 1); // Febuary 1, 2024
+    console.log("s", startOfPrevious3Months, startOfPrevious6Months)
+    const endOfPrevious3Months = new Date(today.getFullYear(), CURRENT_MONTH - 3, 0); // July 31, 2024
+  
+    // Query to get the most recent transaction record for each customer within the last 12 months
+    const rawQuery = `
+      WITH ranked_customers AS (
+        SELECT *, 
+          ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY datetime_created_at_local DESC) AS row_num
+        FROM ??
+        WHERE ?? = ? AND datetime_created_at_local >= ? AND datetime_created_at_local <= ?
+      )
+      SELECT dimcustomerid, customer_created_at, datetime_created_at_local, merchant_id
+      FROM ranked_customers
+      WHERE row_num = 1
+    `;
+  
+    const params = [
+      TABLES.CUSTOMERS,
+      'merchant_id',
+      merchant_id,
+      startOfPrevious6Months,
+      endOfCurrentMonth,
+    ];
+  
+    // Fetch deduplicated customers within the relevant date range
+    const customers = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
+  
+    // E: Customers who transacted in August, September, or October 2024
+    const endCustomers = customers.filter(
+      (customer) =>
+        customer.datetime_created_at_local >= startOfCurrentPeriod &&
+        customer.datetime_created_at_local <= endOfCurrentPeriod
+    );
+  
+    // N: New customers added in August, September, or October 2024
+    const newCustomers = customers.filter(
+      (customer) =>
+        customer.customer_created_at >= startOfCurrentPeriod &&
+        customer.customer_created_at <= endOfCurrentPeriod
+    );
+  
+    // S: Customers who transacted in Febuary, March, April, May, June, or July 2024
+    const startCustomers = customers.filter(
+      (customer) =>
+        customer.datetime_created_at_local >= startOfPrevious6Months &&
+        customer.datetime_created_at_local <= endOfPrevious3Months
+    );
+  
+    // Debug logs
+    console.log("Total Customers in the last 3 months (E):", endCustomers.length);
+    console.log("New Customers in the last 3 months (N):", newCustomers.length);
+    console.log("Total Customers in the previous 6 months (S):", startCustomers.length);
+  
+    // Calculate retention rate: CRR = ((E - N) / S) * 100
+    const retentionRate =
+      startCustomers.length > 0
+        ? ((endCustomers.length - newCustomers.length) / startCustomers.length) * 100
+        : 0;
+  
+    console.log(`\nCustomer Retention Rate: ${retentionRate.toFixed(2)}%`);
+  
+    return {
+      retention_rate: retentionRate.toFixed(2),
+    };
+  };
+  
+  
 // Function to analyze subscription performance
 const subscriptionPerformance = async () => {
     const today = new Date();
@@ -1473,58 +1632,66 @@ async function main() {
 
         // await getMerchants();
         // await transactionCountByChannel()
+        const cgr = await customerGrowthAndRetentionNewest();
 
-        const sr = await calculateSuccessRate();
-        const rst = await revenueAndSalesTrends()
-        const satm = await salesAnalysisThisMonth();
-        const sp = await subscriptionPerformance();
-        const csg = await customerSegmentation()
-        const cgr = await customerGrowthAndRetention();
-        const psp = await peakShoppingTimes()
-        const da = await disputeAnalysis();
-        const pp = await productPerformance();
-        const pc = await performanceComparison()
-        await plotRevenue(rst.revenue_trends);
-        const image_blobs = {};
-        const [
-            totalRevenueTrendsPlot,
-            totalTransactionTrendsPlot,
-            topProductsPlot,
-            subscriptionPerformancePlot,
-            customerSegmentationPie,
-            customerGrowthPlot,
-            peakShoppingTimesPlot,
-            // revenueAndSalesPlot,
-            // productPerformancePlot,
-        ] = await Promise.all([
-            plotRevenue(rst.revenue_trends),
-            plotTransactions(rst.revenue_trends),
-            plotTopProducts(satm.top_products_this_month),
-            plotSubscriptionPerformance(sp.subscription_history),
-            plotCustomerSegmentationPie(csg),
-            plotCustomerGrowth(cgr.customers_gained_each_month),
-            plotPeakShoppingTimes(psp.peak_shopping_times),
-            // plotRevenueAndSales(rst.revenue_trends),
-            // plotProductPerformance(pp.product_sales_history),
-        ]);
+        // const sr = await calculateSuccessRate();
+        // const rst = await revenueAndSalesTrends()
+        // const satm = await salesAnalysisThisMonth();
+        // const sp = await subscriptionPerformance();
+        // const csg = await customerSegmentation()
+        // const psp = await peakShoppingTimes()
+        // const da = await disputeAnalysis();
+        // const pp = await productPerformance();
+        // const pc = await performanceComparison()
+        // await plotRevenue(rst.revenue_trends);
+        // const image_blobs = {};
+        // const [
+        //     totalRevenueTrendsPlot,
+        //     totalTransactionTrendsPlot,
+        //     topProductsPlot,
+        //     subscriptionPerformancePlot,
+        //     customerSegmentationPie,
+        //     customerGrowthPlot,
+        //     peakShoppingTimesPlot,
+        //     // revenueAndSalesPlot,
+        //     // productPerformancePlot,
+        // ] = await Promise.all([
+        //     plotRevenue(rst.revenue_trends),
+        //     plotTransactions(rst.revenue_trends),
+        //     plotTopProducts(satm.top_products_this_month),
+        //     plotSubscriptionPerformance(sp.subscription_history),
+        //     plotCustomerSegmentationPie(csg),
+        //     plotCustomerGrowth(cgr.customers_gained_each_month),
+        //     plotPeakShoppingTimes(psp.peak_shopping_times),
+        //     // plotRevenueAndSales(rst.revenue_trends),
+        //     // plotProductPerformance(pp.product_sales_history),
+        // ]);
 
-        // Assign plots to image_blobs
-        image_blobs['total_revenue_trends'] = totalRevenueTrendsPlot;
-        image_blobs['total_transaction_trends'] = totalTransactionTrendsPlot;
-        image_blobs['top_products'] = topProductsPlot;
-        image_blobs['subscription_performance'] = subscriptionPerformancePlot;
-        image_blobs['customer_segmentation_pie'] = customerSegmentationPie;
-        image_blobs['customer_growth'] = customerGrowthPlot;
-        image_blobs['peak_shopping_times'] = peakShoppingTimesPlot;
-        //   image_blobs['revenue_and_sales_trends'] = revenueAndSalesPlot;
-        //   image_blobs['product_performance'] = productPerformancePlot;
+        // // Assign plots to image_blobs
+        // image_blobs['total_revenue_trends'] = totalRevenueTrendsPlot;
+        // image_blobs['total_transaction_trends'] = totalTransactionTrendsPlot;
+        // image_blobs['top_products'] = topProductsPlot;
+        // image_blobs['subscription_performance'] = subscriptionPerformancePlot;
+        // image_blobs['customer_segmentation_pie'] = customerSegmentationPie;
+        // image_blobs['customer_growth'] = customerGrowthPlot;
+        // image_blobs['peak_shopping_times'] = peakShoppingTimesPlot;
+        // //   image_blobs['revenue_and_sales_trends'] = revenueAndSalesPlot;
+        // //   image_blobs['product_performance'] = productPerformancePlot;
 
 
-        const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
-        await createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, pc, image_blobs, JSON.parse(result));
+        // const result = await generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr);
+        // await createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, pc, image_blobs, JSON.parse(result));
     } catch (error) {
         console.error("Error in analysis functions:", error);
     }
+    // const transaction = await databaseRepo.getWhere<Dispute>(
+    //     TABLES.TRANSACTIONS,
+    //     { merchant_id: 166476 },
+    //     'currency_code'
+    // );
+   
+    // console.log("done", transaction)
 }
 
 main();
+

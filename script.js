@@ -59,7 +59,7 @@ var axios_1 = require("axios");
 var constants_1 = require("./constants");
 var db_connection_1 = require("./db_connection");
 // const merchant_id = 151697;
-var merchant_id = 100043;
+var merchant_id = 960265;
 // Function to analyze revenue and sales trends over the past year
 var revenueAndSalesTrends = function () { return __awaiter(void 0, void 0, void 0, function () {
     var today, startOfLastYear, endOfCurrentMonth, recentPayments, revenueTrends;
@@ -152,6 +152,111 @@ var customerGrowthAndRetention = function () { return __awaiter(void 0, void 0, 
                 return [2 /*return*/, {
                         customers_gained_each_month: customerGrowth,
                         retention_rate_over_last_year: retentionRate.toFixed(2),
+                    }];
+        }
+    });
+}); };
+var customerGrowthAndRetentionNew = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var CURRENT_MONTH, today, startOfLastYear, startOfLast3Months, endOfCurrentMonth, startOfCurrentMonth, rawQuery, params, customers, customerGrowth, returningCustomers, customersBeforePeriod, retentionRate;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                CURRENT_MONTH = 9;
+                today = new Date();
+                startOfLastYear = new Date(today.getFullYear() - 1, CURRENT_MONTH, 1);
+                startOfLast3Months = new Date(today.getFullYear(), CURRENT_MONTH - 3, 1);
+                endOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH + 1, 0);
+                startOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH, 1);
+                rawQuery = "\n      WITH ranked_customers AS (\n        SELECT *, \n          ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY customer_created_at DESC) AS row_num\n        FROM ??\n        WHERE ?? = ? AND customer_created_at >= ? AND customer_created_at <= ?\n      )\n      SELECT dimcustomerid, customer_created_at, datetime_created_at_local, merchant_id\n      FROM ranked_customers\n      WHERE row_num = 1\n    ";
+                params = [
+                    constants_1.TABLES.CUSTOMERS,
+                    'merchant_id',
+                    merchant_id,
+                    startOfLastYear.toISOString(),
+                    endOfCurrentMonth.toISOString(),
+                ];
+                return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, params)];
+            case 1:
+                customers = _a.sent();
+                customerGrowth = customers.reduce(function (acc, customer) {
+                    var addedOnMonth = (0, date_fns_1.format)(customer.customer_created_at, 'yyyy-MM');
+                    if (!acc[addedOnMonth]) {
+                        acc[addedOnMonth] = 0;
+                    }
+                    acc[addedOnMonth]++;
+                    return acc;
+                }, {});
+                // Debug: Log total customer counts
+                console.log("Total Customers in the last 12 months:", customers.length);
+                returningCustomers = customers.filter(function (customer) {
+                    return customer.customer_created_at < startOfCurrentMonth &&
+                        customer.datetime_created_at_local >= startOfLast3Months &&
+                        customer.datetime_created_at_local <= endOfCurrentMonth;
+                }).length;
+                // Debug: Log returning customers count
+                console.log("Returning Customers in the current month:", returningCustomers);
+                customersBeforePeriod = customers.filter(function (customer) { return customer.customer_created_at < startOfCurrentMonth; }).length;
+                // Debug: Log customers before the current period
+                console.log("Total Customers Before Current Month:", customersBeforePeriod);
+                retentionRate = customersBeforePeriod > 0 ? (returningCustomers / customersBeforePeriod) * 100 : 0;
+                console.log('\nCustomer Growth (New Customers per Month):');
+                console.log(customerGrowth);
+                console.log("\nCustomer Retention Rate: ".concat(retentionRate.toFixed(2), "%"));
+                return [2 /*return*/, {
+                        customers_gained_each_month: customerGrowth,
+                        retention_rate_over_last_year: retentionRate.toFixed(2),
+                    }];
+        }
+    });
+}); };
+var customerGrowthAndRetentionNewest = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var CURRENT_MONTH, today, startOfLast3Months, endOfCurrentMonth, startOfCurrentPeriod, endOfCurrentPeriod, startOfPrevious3Months, startOfPrevious6Months, endOfPrevious3Months, rawQuery, params, customers, endCustomers, newCustomers, startCustomers, retentionRate;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                CURRENT_MONTH = 9;
+                today = new Date();
+                startOfLast3Months = new Date(today.getFullYear(), CURRENT_MONTH - 2, 1);
+                endOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH + 1, 0);
+                startOfCurrentPeriod = new Date(today.getFullYear(), CURRENT_MONTH - 2, 1);
+                endOfCurrentPeriod = endOfCurrentMonth;
+                startOfPrevious3Months = new Date(today.getFullYear(), CURRENT_MONTH - 5, 1);
+                startOfPrevious6Months = new Date(today.getFullYear(), CURRENT_MONTH - 8, 1);
+                console.log("s", startOfPrevious3Months, startOfPrevious6Months);
+                endOfPrevious3Months = new Date(today.getFullYear(), CURRENT_MONTH - 3, 0);
+                rawQuery = "\n      WITH ranked_customers AS (\n        SELECT *, \n          ROW_NUMBER() OVER (PARTITION BY dimcustomerid ORDER BY datetime_created_at_local DESC) AS row_num\n        FROM ??\n        WHERE ?? = ? AND datetime_created_at_local >= ? AND datetime_created_at_local <= ?\n      )\n      SELECT dimcustomerid, customer_created_at, datetime_created_at_local, merchant_id\n      FROM ranked_customers\n      WHERE row_num = 1\n    ";
+                params = [
+                    constants_1.TABLES.CUSTOMERS,
+                    'merchant_id',
+                    merchant_id,
+                    startOfPrevious6Months,
+                    endOfCurrentMonth,
+                ];
+                return [4 /*yield*/, db_connection_1.databaseRepo.executeRawQuery(rawQuery, params)];
+            case 1:
+                customers = _a.sent();
+                endCustomers = customers.filter(function (customer) {
+                    return customer.datetime_created_at_local >= startOfCurrentPeriod &&
+                        customer.datetime_created_at_local <= endOfCurrentPeriod;
+                });
+                newCustomers = customers.filter(function (customer) {
+                    return customer.customer_created_at >= startOfCurrentPeriod &&
+                        customer.customer_created_at <= endOfCurrentPeriod;
+                });
+                startCustomers = customers.filter(function (customer) {
+                    return customer.datetime_created_at_local >= startOfPrevious6Months &&
+                        customer.datetime_created_at_local <= endOfPrevious3Months;
+                });
+                // Debug logs
+                console.log("Total Customers in the last 3 months (E):", endCustomers.length);
+                console.log("New Customers in the last 3 months (N):", newCustomers.length);
+                console.log("Total Customers in the previous 6 months (S):", startCustomers.length);
+                retentionRate = startCustomers.length > 0
+                    ? ((endCustomers.length - newCustomers.length) / startCustomers.length) * 100
+                    : 0;
+                console.log("\nCustomer Retention Rate: ".concat(retentionRate.toFixed(2), "%"));
+                return [2 /*return*/, {
+                        retention_rate: retentionRate.toFixed(2),
                     }];
         }
     });
@@ -1331,78 +1436,20 @@ function createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, pc, image_blobs, re
 }
 function main() {
     return __awaiter(this, void 0, void 0, function () {
-        var sr, rst, satm, sp, csg, cgr, psp, da, pp, pc, image_blobs, _a, totalRevenueTrendsPlot, totalTransactionTrendsPlot, topProductsPlot, subscriptionPerformancePlot, customerSegmentationPie, customerGrowthPlot, peakShoppingTimesPlot, result, error_3;
-        return __generator(this, function (_b) {
-            switch (_b.label) {
+        var cgr, error_3;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
                 case 0:
-                    _b.trys.push([0, 15, , 16]);
-                    return [4 /*yield*/, calculateSuccessRate()];
+                    _a.trys.push([0, 2, , 3]);
+                    return [4 /*yield*/, customerGrowthAndRetentionNewest()];
                 case 1:
-                    sr = _b.sent();
-                    return [4 /*yield*/, revenueAndSalesTrends()];
+                    cgr = _a.sent();
+                    return [3 /*break*/, 3];
                 case 2:
-                    rst = _b.sent();
-                    return [4 /*yield*/, salesAnalysisThisMonth()];
-                case 3:
-                    satm = _b.sent();
-                    return [4 /*yield*/, subscriptionPerformance()];
-                case 4:
-                    sp = _b.sent();
-                    return [4 /*yield*/, customerSegmentation()];
-                case 5:
-                    csg = _b.sent();
-                    return [4 /*yield*/, customerGrowthAndRetention()];
-                case 6:
-                    cgr = _b.sent();
-                    return [4 /*yield*/, peakShoppingTimes()];
-                case 7:
-                    psp = _b.sent();
-                    return [4 /*yield*/, disputeAnalysis()];
-                case 8:
-                    da = _b.sent();
-                    return [4 /*yield*/, productPerformance()];
-                case 9:
-                    pp = _b.sent();
-                    return [4 /*yield*/, performanceComparison()];
-                case 10:
-                    pc = _b.sent();
-                    return [4 /*yield*/, plotRevenue(rst.revenue_trends)];
-                case 11:
-                    _b.sent();
-                    image_blobs = {};
-                    return [4 /*yield*/, Promise.all([
-                            plotRevenue(rst.revenue_trends),
-                            plotTransactions(rst.revenue_trends),
-                            plotTopProducts(satm.top_products_this_month),
-                            plotSubscriptionPerformance(sp.subscription_history),
-                            plotCustomerSegmentationPie(csg),
-                            plotCustomerGrowth(cgr.customers_gained_each_month),
-                            plotPeakShoppingTimes(psp.peak_shopping_times),
-                            // plotRevenueAndSales(rst.revenue_trends),
-                            // plotProductPerformance(pp.product_sales_history),
-                        ])];
-                case 12:
-                    _a = _b.sent(), totalRevenueTrendsPlot = _a[0], totalTransactionTrendsPlot = _a[1], topProductsPlot = _a[2], subscriptionPerformancePlot = _a[3], customerSegmentationPie = _a[4], customerGrowthPlot = _a[5], peakShoppingTimesPlot = _a[6];
-                    // Assign plots to image_blobs
-                    image_blobs['total_revenue_trends'] = totalRevenueTrendsPlot;
-                    image_blobs['total_transaction_trends'] = totalTransactionTrendsPlot;
-                    image_blobs['top_products'] = topProductsPlot;
-                    image_blobs['subscription_performance'] = subscriptionPerformancePlot;
-                    image_blobs['customer_segmentation_pie'] = customerSegmentationPie;
-                    image_blobs['customer_growth'] = customerGrowthPlot;
-                    image_blobs['peak_shopping_times'] = peakShoppingTimesPlot;
-                    return [4 /*yield*/, generateReport(rst, cgr, da, sp, pp, psp, satm, csg, pc, sr)];
-                case 13:
-                    result = _b.sent();
-                    return [4 /*yield*/, createPdfReportNew(sr, da, satm, sp, cgr, csg, psp, pc, image_blobs, JSON.parse(result))];
-                case 14:
-                    _b.sent();
-                    return [3 /*break*/, 16];
-                case 15:
-                    error_3 = _b.sent();
+                    error_3 = _a.sent();
                     console.error("Error in analysis functions:", error_3);
-                    return [3 /*break*/, 16];
-                case 16: return [2 /*return*/];
+                    return [3 /*break*/, 3];
+                case 3: return [2 /*return*/];
             }
         });
     });
