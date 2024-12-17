@@ -52,6 +52,7 @@ var QuickChart = require('quickchart-js');
 var Handlebars = require('handlebars');
 var pdf = require('html-pdf-node');
 var puppeteer = require('puppeteer');
+var nodemailer = require("nodemailer");
 var date_fns_1 = require("date-fns");
 var fs = require("fs");
 var fs_1 = require("fs");
@@ -1454,4 +1455,94 @@ function main() {
         });
     });
 }
-main();
+// main();
+// const sendEmail = () => {
+//     // Set your SendGrid API key
+//     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+//     // Email data
+//     const msg = {
+//         to: 'mhamzat@paystack.com',
+//         from: 'mazeedahhamzat@gmail.com',
+//         subject: 'Merchant Report for October 2024',
+//         templateId: 'd-b650120a8c684f8b85504b99039d51e0', // Replace with your actual dynamic template ID
+//         dynamicTemplateData: {
+//             company_name: 'Acme Caorp',
+//             month: 'October',
+//             wrapped_link: 'http://localhost:3000/wrapped/960265',
+//             report_link: 'http://localhost:3001/l1-insights/pdf/960265',
+//         },
+//         personalizations: [
+//             {
+//                 to: ['mhamzat@paystack.com'],
+//                 dynamicTemplateData: {
+//                     subject: 'Merchant Report for October 2024',  // Ensure the subject is included here too
+//                 },
+//             },
+//         ],
+//     };
+//     console.log("sending", msg)
+//     sgMail
+//         .send(msg)
+//         .then((r) => {
+//             console.log('Email sent successfully', r);
+//         })
+//         .catch((error) => {
+//             console.error('Error sending email:', error.response.body.errors);
+//         });
+//     console.log("end");
+// }
+// sendEmail();  
+var transporter = nodemailer.createTransport({
+    service: 'gmail',
+    host: "smtp.gmail.com",
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.APP_PASSWORD,
+    },
+});
+var loadTemplate = function (templatePath, replacements) {
+    var template = fs.readFileSync(templatePath, 'utf8');
+    for (var key in replacements) {
+        template = template.replace(new RegExp("{{".concat(key, "}}"), 'g'), replacements[key]);
+    }
+    return template;
+};
+var sendEmail = function () { return __awaiter(void 0, void 0, void 0, function () {
+    var templatePath, replacements, htmlContent, mailOptions, info, error_4;
+    return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0:
+                _a.trys.push([0, 2, , 3]);
+                templatePath = './emailTemplate.html';
+                replacements = {
+                    company_name: 'Acme Caorp',
+                    date: 'October 2024',
+                    wrapped_link: 'http://localhost:3000/wrapped/960265',
+                    report_link: 'http://localhost:3001/l1-insights/pdf/960265',
+                };
+                htmlContent = loadTemplate(templatePath, replacements);
+                mailOptions = {
+                    from: {
+                        name: 'Paystack',
+                        address: process.env.EMAIL_USER,
+                    },
+                    to: 'mhamzat@paystack.com',
+                    subject: "Merchant Report for ".concat(replacements.date),
+                    html: htmlContent,
+                };
+                return [4 /*yield*/, transporter.sendMail(mailOptions)];
+            case 1:
+                info = _a.sent();
+                console.log('Email sent:', info.messageId);
+                return [3 /*break*/, 3];
+            case 2:
+                error_4 = _a.sent();
+                console.error('Error sending email:', error_4);
+                return [3 /*break*/, 3];
+            case 3: return [2 /*return*/];
+        }
+    });
+}); };
+sendEmail();
+// const templatePath = path.join(__dirname, 'templates', 'emailTemplate.html');
+// console.log(templatePath)

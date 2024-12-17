@@ -5,8 +5,10 @@ const QuickChart = require('quickchart-js');
 const Handlebars = require('handlebars');
 const pdf = require('html-pdf-node');
 const puppeteer = require('puppeteer');
+import * as nodemailer from 'nodemailer';
 
 
+import * as sgMail from '@sendgrid/mail';
 import { format, parseISO, subYears, isBefore, subMonths, getMonth, subDays, intervalToDuration, formatDuration } from 'date-fns';
 import * as fs from 'fs';
 import { writeFileSync } from 'fs';
@@ -154,7 +156,7 @@ const customerGrowthAndRetentionNew = async () => {
     const startOfLast3Months = new Date(today.getFullYear(), CURRENT_MONTH - 3, 1); // 3 months ago
     const endOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH + 1, 0); // End of current month
     const startOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH, 1); // Start of current month
-  
+
     // Query to get the most recent record for each customer within the last 12 months
     const rawQuery = `
       WITH ranked_customers AS (
@@ -167,81 +169,81 @@ const customerGrowthAndRetentionNew = async () => {
       FROM ranked_customers
       WHERE row_num = 1
     `;
-  
+
     const params = [
-      TABLES.CUSTOMERS,
-      'merchant_id',
-      merchant_id,
-      startOfLastYear.toISOString(),
-      endOfCurrentMonth.toISOString(),
+        TABLES.CUSTOMERS,
+        'merchant_id',
+        merchant_id,
+        startOfLastYear.toISOString(),
+        endOfCurrentMonth.toISOString(),
     ];
-  
+
     // Fetch the deduplicated customers within the last year
     const customers = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
-  
+
     // Group customers by the month they were added (customer growth)
     const customerGrowth = customers.reduce((acc, customer) => {
-      const addedOnMonth = format(customer.customer_created_at, 'yyyy-MM');
-      if (!acc[addedOnMonth]) {
-        acc[addedOnMonth] = 0;
-      }
-      acc[addedOnMonth]++;
-      return acc;
+        const addedOnMonth = format(customer.customer_created_at, 'yyyy-MM');
+        if (!acc[addedOnMonth]) {
+            acc[addedOnMonth] = 0;
+        }
+        acc[addedOnMonth]++;
+        return acc;
     }, {} as Record<string, number>);
-  
+
     // Debug: Log total customer counts
     console.log("Total Customers in the last 12 months:", customers.length);
-  
+
     // Identify returning customers:
     // - Customers created before the current month
     // - Most recent transaction within the current month (using datetime_created_at_local)
     const returningCustomers = customers.filter(
-      (customer) =>
-        customer.customer_created_at < startOfCurrentMonth &&
-        customer.datetime_created_at_local >= startOfLast3Months &&
-        customer.datetime_created_at_local <= endOfCurrentMonth
+        (customer) =>
+            customer.customer_created_at < startOfCurrentMonth &&
+            customer.datetime_created_at_local >= startOfLast3Months &&
+            customer.datetime_created_at_local <= endOfCurrentMonth
     ).length;
-  
+
     // Debug: Log returning customers count
     console.log("Returning Customers in the current month:", returningCustomers);
-  
+
     // Count customers who were created before the current month
     const customersBeforePeriod = customers.filter(
-      (customer) => customer.customer_created_at < startOfCurrentMonth
+        (customer) => customer.customer_created_at < startOfCurrentMonth
     ).length;
-  
+
     // Debug: Log customers before the current period
     console.log("Total Customers Before Current Month:", customersBeforePeriod);
-  
+
     // Calculate retention rate
     const retentionRate =
-      customersBeforePeriod > 0 ? (returningCustomers / customersBeforePeriod) * 100 : 0;
-  
+        customersBeforePeriod > 0 ? (returningCustomers / customersBeforePeriod) * 100 : 0;
+
     console.log('\nCustomer Growth (New Customers per Month):');
     console.log(customerGrowth);
     console.log(`\nCustomer Retention Rate: ${retentionRate.toFixed(2)}%`);
-  
+
     return {
-      customers_gained_each_month: customerGrowth,
-      retention_rate_over_last_year: retentionRate.toFixed(2),
+        customers_gained_each_month: customerGrowth,
+        retention_rate_over_last_year: retentionRate.toFixed(2),
     };
-  };
-  
-  const customerGrowthAndRetentionNewest = async () => {
+};
+
+const customerGrowthAndRetentionNewest = async () => {
     const CURRENT_MONTH = 9; // October (0-indexed)
     const today = new Date();
-  
+
     // Define date ranges
     const startOfLast3Months = new Date(today.getFullYear(), CURRENT_MONTH - 2, 1); // August 1, 2024
     const endOfCurrentMonth = new Date(today.getFullYear(), CURRENT_MONTH + 1, 0); // October 31, 2024
     const startOfCurrentPeriod = new Date(today.getFullYear(), CURRENT_MONTH - 2, 1); // August 1, 2024
     const endOfCurrentPeriod = endOfCurrentMonth; // October 31, 2024
-  
+
     const startOfPrevious3Months = new Date(today.getFullYear(), CURRENT_MONTH - 5, 1); // May 1, 2024
     const startOfPrevious6Months = new Date(today.getFullYear(), CURRENT_MONTH - 8, 1); // Febuary 1, 2024
     console.log("s", startOfPrevious3Months, startOfPrevious6Months)
     const endOfPrevious3Months = new Date(today.getFullYear(), CURRENT_MONTH - 3, 0); // July 31, 2024
-  
+
     // Query to get the most recent transaction record for each customer within the last 12 months
     const rawQuery = `
       WITH ranked_customers AS (
@@ -254,58 +256,58 @@ const customerGrowthAndRetentionNew = async () => {
       FROM ranked_customers
       WHERE row_num = 1
     `;
-  
+
     const params = [
-      TABLES.CUSTOMERS,
-      'merchant_id',
-      merchant_id,
-      startOfPrevious6Months,
-      endOfCurrentMonth,
+        TABLES.CUSTOMERS,
+        'merchant_id',
+        merchant_id,
+        startOfPrevious6Months,
+        endOfCurrentMonth,
     ];
-  
+
     // Fetch deduplicated customers within the relevant date range
     const customers = await databaseRepo.executeRawQuery<Customer>(rawQuery, params);
-  
+
     // E: Customers who transacted in August, September, or October 2024
     const endCustomers = customers.filter(
-      (customer) =>
-        customer.datetime_created_at_local >= startOfCurrentPeriod &&
-        customer.datetime_created_at_local <= endOfCurrentPeriod
+        (customer) =>
+            customer.datetime_created_at_local >= startOfCurrentPeriod &&
+            customer.datetime_created_at_local <= endOfCurrentPeriod
     );
-  
+
     // N: New customers added in August, September, or October 2024
     const newCustomers = customers.filter(
-      (customer) =>
-        customer.customer_created_at >= startOfCurrentPeriod &&
-        customer.customer_created_at <= endOfCurrentPeriod
+        (customer) =>
+            customer.customer_created_at >= startOfCurrentPeriod &&
+            customer.customer_created_at <= endOfCurrentPeriod
     );
-  
+
     // S: Customers who transacted in Febuary, March, April, May, June, or July 2024
     const startCustomers = customers.filter(
-      (customer) =>
-        customer.datetime_created_at_local >= startOfPrevious6Months &&
-        customer.datetime_created_at_local <= endOfPrevious3Months
+        (customer) =>
+            customer.datetime_created_at_local >= startOfPrevious6Months &&
+            customer.datetime_created_at_local <= endOfPrevious3Months
     );
-  
+
     // Debug logs
     console.log("Total Customers in the last 3 months (E):", endCustomers.length);
     console.log("New Customers in the last 3 months (N):", newCustomers.length);
     console.log("Total Customers in the previous 6 months (S):", startCustomers.length);
-  
+
     // Calculate retention rate: CRR = ((E - N) / S) * 100
     const retentionRate =
-      startCustomers.length > 0
-        ? ((endCustomers.length - newCustomers.length) / startCustomers.length) * 100
-        : 0;
-  
+        startCustomers.length > 0
+            ? ((endCustomers.length - newCustomers.length) / startCustomers.length) * 100
+            : 0;
+
     console.log(`\nCustomer Retention Rate: ${retentionRate.toFixed(2)}%`);
-  
+
     return {
-      retention_rate: retentionRate.toFixed(2),
+        retention_rate: retentionRate.toFixed(2),
     };
-  };
-  
-  
+};
+
+
 // Function to analyze subscription performance
 const subscriptionPerformance = async () => {
     const today = new Date();
@@ -642,7 +644,7 @@ const disputeAnalysis = async () => {
         const percentage = resolvedDisputesForTheMonth.length > 0
             ? (count / resolvedDisputesForTheMonth.length) * 100
             : 0;
-       
+
         acc[category] = {
             count,
             percentage: percentage // Format percentage to 2 decimal places
@@ -1548,9 +1550,9 @@ async function createPdfReportNew(sr: any, da: any, satm: any, sp: any, cgr: any
         resolved_this_month: da.resolved_this_month,
         mean_time_to_resolution: da.mean_time_to_resolution,
         manually_resolved_dispute_percentage: da.resolution_percentages['Merchant-Accepted'].percentage.toFixed(2),
-        auto_resolved_dispute_percentage: Object.entries(da.resolution_percentages as Record<string, {count:number, percentage: number }>)
-        .filter(([key]) => key !== 'Merchant-Accepted') // Exclude 'Merchant-Accepted'
-        .reduce((sum, [_, value]) => sum + value.percentage, 0).toFixed(2),
+        auto_resolved_dispute_percentage: Object.entries(da.resolution_percentages as Record<string, { count: number, percentage: number }>)
+            .filter(([key]) => key !== 'Merchant-Accepted') // Exclude 'Merchant-Accepted'
+            .reduce((sum, [_, value]) => sum + value.percentage, 0).toFixed(2),
         responses_to_key_questions: result.responses_to_key_questions,
         ceo_summary_paragraphs_title: result.ceo_summary_paragraphs_title,
         ceo_summary_paragraphs: result.ceo_summary_paragraphs,
@@ -1560,7 +1562,7 @@ async function createPdfReportNew(sr: any, da: any, satm: any, sp: any, cgr: any
         // revenue_sales_trend: getImageUrl('./revenue_and_sales_trends.png'),
     };
 
-    
+
 
     // Compile the Handlebars template
     const template = Handlebars.compile(templateHtml);
@@ -1689,9 +1691,107 @@ async function main() {
     //     { merchant_id: 166476 },
     //     'currency_code'
     // );
-   
+
     // console.log("done", transaction)
 }
 
-main();
+// main();
 
+// const sendEmail = () => {
+//     // Set your SendGrid API key
+//     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+//     // Email data
+//     const msg = {
+//         to: 'mhamzat@paystack.com',
+//         from: 'mazeedahhamzat@gmail.com',
+//         subject: 'Merchant Report for October 2024',
+//         templateId: 'd-b650120a8c684f8b85504b99039d51e0', // Replace with your actual dynamic template ID
+//         dynamicTemplateData: {
+//             company_name: 'Acme Caorp',
+//             month: 'October',
+//             wrapped_link: 'http://localhost:3000/wrapped/960265',
+//             report_link: 'http://localhost:3001/l1-insights/pdf/960265',
+//         },
+//         personalizations: [
+//             {
+//                 to: ['mhamzat@paystack.com'],
+//                 dynamicTemplateData: {
+//                     subject: 'Merchant Report for October 2024',  // Ensure the subject is included here too
+//                 },
+//             },
+//         ],
+//     };
+//     console.log("sending", msg)
+//     sgMail
+//         .send(msg)
+//         .then((r) => {
+//             console.log('Email sent successfully', r);
+//         })
+//         .catch((error) => {
+//             console.error('Error sending email:', error.response.body.errors);
+//         });
+//     console.log("end");
+
+// }
+
+// sendEmail();  
+
+
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    host: "smtp.gmail.com",
+    auth: {
+        user: process.env.EMAIL_USER, 
+        pass: process.env.APP_PASSWORD, 
+    },
+});
+
+const loadTemplate = (templatePath, replacements) => {
+    let template = fs.readFileSync(templatePath, 'utf8');
+    for (const key in replacements) {
+        template = template.replace(new RegExp(`{{${key}}}`, 'g'), replacements[key]);
+    }
+    return template;
+};
+
+const sendEmail = async () => {
+    try {
+        // Path to the template file
+        const templatePath = './emailTemplate.html';
+
+        // Data to replace placeholders in the template
+        const replacements = {
+            company_name: 'Acme Caorp',
+            date: 'October 2024',
+            wrapped_link: 'http://localhost:3000/wrapped/960265',
+            report_link: 'http://localhost:3001/l1-insights/pdf/960265',
+        };
+
+        // Load and populate the template
+        const htmlContent = loadTemplate(templatePath, replacements);
+
+        
+        const mailOptions = {
+            from: {
+                name: 'Paystack',
+                address: process.env.EMAIL_USER,
+            },
+            to: 'mhamzat@paystack.com',
+            subject: `Merchant Report for ${replacements.date}`,
+            html: htmlContent,
+        };
+
+        // Send the email
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Email sent:', info.messageId);
+    } catch (error) {
+        console.error('Error sending email:', error);
+    }
+};
+
+sendEmail();
+
+// const templatePath = path.join(__dirname, 'templates', 'emailTemplate.html');
+// console.log(templatePath)
